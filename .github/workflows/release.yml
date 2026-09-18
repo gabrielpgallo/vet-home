@@ -87,14 +87,30 @@ jobs:
       - name: Conferir configuração
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          ADMIN_DATABASE_URL: ${{ secrets.ADMIN_DATABASE_URL }}
+          APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
+          DATABASE_SSL_CA: ${{ secrets.DATABASE_SSL_CA }}
         run: |
-          for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+          for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID ADMIN_DATABASE_URL APP_DB_PASSWORD DATABASE_SSL_CA; do
             if [[ -z "${!key}" ]]; then
               echo "::error::Configure $key em Settings → Secrets and variables → Actions."
               exit 1
             fi
           done
+          if [[ ! "$APP_DB_PASSWORD" =~ ^[A-Za-z0-9_-]{20,128}$ ]]; then
+            echo '::error::APP_DB_PASSWORD precisa ter entre 20 e 128 caracteres alfanuméricos, _ ou -.'
+            exit 1
+          fi
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - run: pnpm install --frozen-lockfile
       - run: npm install --global vercel@59.16.0
+      - name: Aplicar migrations no Supabase de produção
+        timeout-minutes: 5
+        env:
+          ADMIN_DATABASE_URL: ${{ secrets.ADMIN_DATABASE_URL }}
+          APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
+          DATABASE_SSL_CA: ${{ secrets.DATABASE_SSL_CA }}
+        run: pnpm db:migrate
       - name: Publicar o commit da release
         id: deploy
         env:

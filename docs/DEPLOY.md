@@ -47,7 +47,7 @@ Variáveis no ambiente Production:
 | `GOOGLE_CLIENT_ID`     | ID do cliente OAuth Web                                                                             |
 | `GOOGLE_CLIENT_SECRET` | Segredo do cliente OAuth Web                                                                        |
 
-Não coloque `ADMIN_DATABASE_URL`, `APP_DB_PASSWORD` ou variáveis `NEXT_PUBLIC_` com segredos na Vercel. Migrations não rodam durante o build. Para Preview, use banco, segredo e OAuth separados; não copie automaticamente o acesso de produção.
+Não coloque `ADMIN_DATABASE_URL`, `APP_DB_PASSWORD` ou variáveis `NEXT_PUBLIC_` com segredos na Vercel. Migrations não rodam durante o build da Vercel: a Action de release as executa no Supabase antes do deploy, usando secrets do environment `production` no GitHub (veja `RELEASES.md`). Para Preview, use banco, segredo e OAuth separados; não copie automaticamente o acesso de produção.
 
 O domínio automático usa `VERCEL_PROJECT_PRODUCTION_URL` apenas quando `VERCEL_ENV=production`; mantenha a exposição das variáveis de sistema habilitada na Vercel. Um `BETTER_AUTH_URL` explícito tem prioridade. Nunca usamos o cabeçalho Host da requisição para definir o domínio OAuth.
 
