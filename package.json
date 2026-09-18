@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1 --port 3010",
-    "build": "next build",
+    "build": "tsx scripts/check-deploy.ts && next build",
     "start": "next start --hostname 127.0.0.1 --port 3010",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
@@ -17,7 +17,8 @@
     "setup": "pnpm env:init && pnpm db:up && pnpm db:migrate && pnpm db:seed",
     "env:init": "tsx scripts/init-env.ts",
     "format": "prettier --write src scripts tests docs *.ts *.mjs *.json README.md",
-    "iam:bootstrap": "tsx scripts/bootstrap-iam.ts"
+    "iam:bootstrap": "tsx scripts/bootstrap-iam.ts",
+    "db:bootstrap": "tsx scripts/bootstrap-clinic.ts"
   },
   "dependencies": {
     "better-auth": "1.7.5",
@@ -46,6 +47,9 @@
     "vitest": "^4.1.10"
   },
   "packageManager": "pnpm@10.13.1",
+  "engines": {
+    "node": "22.x"
+  },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",

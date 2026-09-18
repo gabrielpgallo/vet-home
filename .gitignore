@@ -8,3 +8,6 @@ test-results/
 .DS_Store
 next-env.d.ts
 .pnpm-store/
+.vercel/
+*.dump
+*.backup

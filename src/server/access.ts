@@ -10,6 +10,7 @@ export async function identity(): Promise<Identity> {
     host = h.get("host") || "";
   if (process.env.AUTH_MODE === "local") {
     if (
+      process.env.VERCEL ||
       process.env.APP_LOCAL_MODE !== "true" ||
       !/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host)
     )
@@ -26,7 +27,7 @@ export async function identity(): Promise<Identity> {
       local: true,
     };
   }
-  if (!googleReady())
+  if (process.env.AUTH_MODE !== "google" || !googleReady())
     throw new AppError("O login Google ainda precisa ser configurado.", 401);
   const session = await auth.api.getSession({ headers: h });
   if (!session || !session.user.emailVerified)

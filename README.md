@@ -78,6 +78,8 @@ Stack: Next.js App Router, React, TypeScript, PostgreSQL, `pg`, Zod e PDFKit. O 
 
 ### Login Google e IAM
 
+Para publicar na Vercel com PostgreSQL do Supabase, veja [configuração de implantação e pendências](docs/DEPLOY.md). A versão atual usa Better Auth; Supabase Auth e Storage ainda são etapas pendentes.
+
 O módulo **Usuários e acessos** permite criar convites, gerenciar perfis (administradora, veterinária e assistente), suspender usuários e encerrar sessões. **Minha conta** mostra os acessos e dispositivos do próprio usuário. As permissões são verificadas na API e os registros são isolados por clínica.
 
 A integração usa Better Auth; o ambiente local continua em modo de desenvolvimento explícito até configurar as credenciais Google. Veja [configuração e critérios de acesso](docs/AUTENTICACAO.md). O convite inicial está reservado para `irsaudeanimal@gmail.com`. Convites não enviam e-mails automaticamente.

@@ -4,6 +4,13 @@ import { randomUUID } from "node:crypto";
 import { runCommand } from "../src/server/commands";
 import { dateKey, ORG_ID, type Command } from "../src/lib/domain";
 import { pool } from "../src/server/db";
+if (
+  process.env.VERCEL ||
+  !["127.0.0.1", "localhost"].includes(
+    new URL(process.env.ADMIN_DATABASE_URL!).hostname,
+  )
+)
+  throw new Error("Dados de demonstração só podem ser criados no banco local.");
 const admin = new Pool({ connectionString: process.env.ADMIN_DATABASE_URL });
 await admin.query(
   "INSERT INTO organizations(id,name) VALUES($1,$2) ON CONFLICT DO NOTHING",

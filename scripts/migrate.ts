@@ -2,6 +2,33 @@ import "./env";
 import { Pool } from "pg";
 import { readdir, readFile } from "node:fs/promises";
 const pool = new Pool({ connectionString: process.env.ADMIN_DATABASE_URL });
+// Only application-owned tables: never grant access to other Supabase data.
+const appTables = [
+  "tutors",
+  "patients",
+  "visits",
+  "visit_patients",
+  "consultations",
+  "products",
+  "applications",
+  "prescriptions",
+  "attachments",
+  "exams",
+  "exam_links",
+  "payments",
+  "timeline",
+  "mutations",
+  "audit_log",
+  "practice_settings",
+  "expenses",
+  "auth_user",
+  "auth_session",
+  "auth_account",
+  "auth_verification",
+  "auth_rate_limit",
+  "iam_memberships",
+  "iam_invitations",
+];
 const client = await pool.connect();
 try {
   await client.query("SELECT pg_advisory_lock(741203)");
@@ -45,16 +72,36 @@ try {
       `CREATE ROLE vet_app LOGIN PASSWORD '${password}' NOSUPERUSER NOBYPASSRLS`,
     );
   await client.query("GRANT USAGE ON SCHEMA public TO vet_app");
+  const role = (
+    await client.query(
+      "SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname='vet_app'",
+    )
+  ).rows[0];
+  if (role.rolsuper || role.rolbypassrls)
+    throw new Error("vet_app não pode ser superuser nem ignorar RLS.");
   await client.query(
-    "GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO vet_app",
+    `GRANT SELECT,INSERT,UPDATE,DELETE ON ${appTables.map((t) => `public.${t}`).join(",")} TO vet_app`,
   );
   await client.query(
     "REVOKE ALL ON schema_migrations,organizations FROM vet_app",
   );
   await client.query("GRANT SELECT ON organizations TO vet_app");
   await client.query(
-    "GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO vet_app",
+    "GRANT USAGE,SELECT ON SEQUENCE public.audit_log_id_seq TO vet_app",
   );
+  // IAM and authentication tables are accessed exclusively by the server.
+  // Supabase's default API grants must not expose them via PostgREST.
+  const protectedTables = [...appTables, "organizations", "schema_migrations"]
+    .map((t) => `public.${t}`)
+    .join(",");
+  await client.query(`REVOKE ALL ON ${protectedTables} FROM PUBLIC`);
+  for (const apiRole of ["anon", "authenticated"]) {
+    if (
+      (await client.query("SELECT 1 FROM pg_roles WHERE rolname=$1", [apiRole]))
+        .rowCount
+    )
+      await client.query(`REVOKE ALL ON ${protectedTables} FROM ${apiRole}`);
+  }
   console.log("Database ready. App role has RLS enabled.");
 } finally {
   await client.query("SELECT pg_advisory_unlock(741203)");

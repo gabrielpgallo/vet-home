@@ -3,7 +3,12 @@ import { getOrgId, requestIdentity } from "./context";
 const globalDb = globalThis as unknown as { vetPool?: Pool };
 export const pool =
   globalDb.vetPool ??
-  new Pool({ connectionString: process.env.DATABASE_URL, max: 8 });
+  new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: process.env.VERCEL ? 1 : 8,
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 20_000,
+  });
 if (process.env.NODE_ENV !== "production") globalDb.vetPool = pool;
 export async function forOrg<T>(
   fn: (db: PoolClient) => Promise<T>,
