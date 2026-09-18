@@ -77,6 +77,7 @@ Stack: Next.js App Router, React, TypeScript, PostgreSQL, `pg`, Zod e PDFKit. O 
 - `scripts`: ambiente, migração e exemplos.
 - `tests`: regras de domínio e integração real com PostgreSQL.
 - [Escopo do produto](docs/PRODUTO.md).
+- [Versionamento e deploy por release](docs/RELEASES.md).
 - [Assistente de anamnese: texto, gravação e revisão com IA](docs/IA.md).
 
 ### Login Google e IAM

@@ -29,6 +29,8 @@ Esses comandos inicializam um banco vazio; não transferem os registros, anexos 
 
 ## Vercel
 
+O deploy de produção é controlado pela publicação de releases estáveis `vMAJOR.MINOR.PATCH` no GitHub. Pushes não fazem deploy automático. Veja a [configuração da Action e publicação de releases](RELEASES.md).
+
 Importe o repositório `gabrielpgallo/vet-home`, framework Next.js, diretório raiz `.` e Node.js 22. O projeto já define `pnpm build` e região `gru1`.
 
 Variáveis no ambiente Production:
@@ -49,7 +51,7 @@ Não coloque `ADMIN_DATABASE_URL`, `APP_DB_PASSWORD` ou variáveis `NEXT_PUBLIC_
 
 O domínio automático usa `VERCEL_PROJECT_PRODUCTION_URL` apenas quando `VERCEL_ENV=production`; mantenha a exposição das variáveis de sistema habilitada na Vercel. Um `BETTER_AUTH_URL` explícito tem prioridade. Nunca usamos o cabeçalho Host da requisição para definir o domínio OAuth.
 
-Caso tenha sido preparado um arquivo `.env.vercel.production`, importe-o em Settings → Environment Variables → Import .env, selecionando apenas Production. Ele contém a conexão restrita `vet_app`, o certificado, o segredo de sessão e as credenciais Google; não inclui acesso administrativo ao banco. Em seguida implante o commit mais recente da `main`. Esse arquivo é privado, ignorado pelo Git, e não deve ser publicado.
+Caso tenha sido preparado um arquivo `.env.vercel.production`, importe-o em Settings → Environment Variables → Import .env, selecionando apenas Production. Ele contém a conexão restrita `vet_app`, o certificado, o segredo de sessão e as credenciais Google; não inclui acesso administrativo ao banco. Em seguida publique uma release conforme `RELEASES.md`. Esse arquivo é privado, ignorado pelo Git, e não deve ser publicado.
 
 No GCP, adicione `https://seu-projeto.vercel.app/api/auth/callback/google` às URLs de redirecionamento autorizadas do cliente OAuth. Preserve também a URL local enquanto ela for usada. Após mudar as variáveis, faça um novo deploy. Entre com a conta convidada e aceite o convite da clínica.
 

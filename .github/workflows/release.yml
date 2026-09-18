@@ -1,0 +1,108 @@
+name: Release para produção
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-production
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: ${{ !github.event.release.prerelease && !github.event.release.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vet_owner
+          POSTGRES_PASSWORD: ci_owner_only
+          POSTGRES_DB: vet_domicilio
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U vet_owner -d vet_domicilio"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      # Disposable CI database; these credentials are never used in production.
+      ADMIN_DATABASE_URL: postgresql://vet_owner:ci_owner_only@localhost:5432/vet_domicilio
+      DATABASE_URL: postgresql://vet_app:ci_app_password_for_tests_only@localhost:5432/vet_domicilio
+      APP_DB_PASSWORD: ci_app_password_for_tests_only
+      APP_LOCAL_MODE: "true"
+      AUTH_MODE: local
+      APP_ORG_ID: ci-tests
+      BETTER_AUTH_URL: http://localhost:3010
+      BETTER_AUTH_SECRET: ci_session_secret_for_tests_only_123456789
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validar versão e origem
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo '::error::Use uma tag no formato vMAJOR.MINOR.PATCH, por exemplo v1.0.0.'
+            exit 1
+          fi
+          git merge-base --is-ancestor HEAD origin/main || {
+            echo '::error::A release deve apontar para um commit que já pertence à main.'
+            exit 1
+          }
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:migrate
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Conferir configuração
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Configure $key em Settings → Secrets and variables → Actions."
+              exit 1
+            fi
+          done
+      - run: npm install --global vercel@59.16.0
+      - name: Publicar o commit da release
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          # Vercel performs the production build with its Production variables.
+          url=$(vercel deploy --prod --yes --token="$VERCEL_TOKEN" \
+            --meta "releaseTag=$RELEASE_TAG" --meta "releaseCommit=$GITHUB_SHA")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          printf '### %s\n\nCommit: `%s`\n\nDeploy: %s\n' "$RELEASE_TAG" "$GITHUB_SHA" "$url" >> "$GITHUB_STEP_SUMMARY"
