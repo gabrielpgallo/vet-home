@@ -5,6 +5,7 @@ import { can, type Permission, type Identity } from "@/lib/permissions";
 import { ORG_ID } from "@/lib/domain";
 import { requestIdentity } from "./context";
 import { apiError } from "./http";
+import { appUrl } from "../lib/app-url";
 export async function identity(): Promise<Identity> {
   const h = await headers(),
     host = h.get("host") || "";
@@ -60,7 +61,7 @@ export async function checkOrigin(req: Request) {
   const expected =
     process.env.AUTH_MODE === "local"
       ? "http://" + host
-      : process.env.BETTER_AUTH_URL;
+      : appUrl();
   if (!expected || req.headers.get("origin") !== new URL(expected).origin)
     throw new AppError("Origem da requisição não autorizada.", 403);
 }

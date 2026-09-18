@@ -13,6 +13,26 @@ const env = {
   APP_ORG_ID: "example",
 };
 describe("deployment configuration", () => {
+  it("uses the Vercel production domain before the first successful deploy", () => {
+    expect(
+      deploymentErrors({
+        ...env,
+        BETTER_AUTH_URL: undefined,
+        VERCEL_ENV: "production",
+        VERCEL_PROJECT_PRODUCTION_URL: "vet-example.vercel.app",
+      }),
+    ).toEqual([]);
+  });
+  it("does not reuse the production domain in preview", () => {
+    expect(
+      deploymentErrors({
+        ...env,
+        BETTER_AUTH_URL: undefined,
+        VERCEL_ENV: "preview",
+        VERCEL_PROJECT_PRODUCTION_URL: "vet-example.vercel.app",
+      }),
+    ).toContain("BETTER_AUTH_URL inválida.");
+  });
   it("accepts an authenticated remote configuration", () =>
     expect(deploymentErrors(env)).toEqual([]));
   it("rejects a local bypass on Vercel", () =>

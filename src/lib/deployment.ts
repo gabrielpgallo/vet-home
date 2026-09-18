@@ -1,3 +1,4 @@
+import { appUrl } from "./app-url";
 export function deploymentErrors(
   env: Record<string, string | undefined>,
 ): string[] {
@@ -11,7 +12,6 @@ export function deploymentErrors(
     errors.push("APP_LOCAL_MODE deve ser false na Vercel.");
   for (const key of [
     "DATABASE_URL",
-    "BETTER_AUTH_URL",
     "BETTER_AUTH_SECRET",
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET",
@@ -24,7 +24,7 @@ export function deploymentErrors(
       "BETTER_AUTH_SECRET precisa ter pelo menos 32 caracteres aleatórios.",
     );
   try {
-    const url = new URL(env.BETTER_AUTH_URL || "");
+    const url = new URL(appUrl(env) || "");
     if (
       url.protocol !== "https:" ||
       url.pathname !== "/" ||

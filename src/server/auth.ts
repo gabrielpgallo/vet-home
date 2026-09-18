@@ -1,17 +1,18 @@
 import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { pool } from "./db";
+import { appUrl } from "../lib/app-url";
 export function googleReady() {
   return !!(
     process.env.GOOGLE_CLIENT_ID &&
     process.env.GOOGLE_CLIENT_SECRET &&
     process.env.BETTER_AUTH_SECRET &&
-    process.env.BETTER_AUTH_URL
+    appUrl()
   );
 }
 export const auth = betterAuth({
   appName: "IR Saúde Animal",
-  baseURL: process.env.BETTER_AUTH_URL || "http://127.0.0.1:3010",
+  baseURL: appUrl() || "http://127.0.0.1:3010",
   database: pool,
   user: {
     modelName: "auth_user",

@@ -1,7 +1,8 @@
 import "./env";
 import { Pool } from "pg";
 import { readdir, readFile } from "node:fs/promises";
-const pool = new Pool({ connectionString: process.env.ADMIN_DATABASE_URL });
+import { databaseConfig } from "../src/lib/database-config";
+const pool = new Pool(databaseConfig(process.env.ADMIN_DATABASE_URL));
 // Only application-owned tables: never grant access to other Supabase data.
 const appTables = [
   "tutors",

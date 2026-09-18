@@ -2,11 +2,12 @@ import "./env";
 import { Pool } from "pg";
 import { ORG_ID } from "../src/lib/domain";
 import { defaultSettings } from "../src/lib/settings";
+import { databaseConfig } from "../src/lib/database-config";
 
 if (!process.env.ADMIN_DATABASE_URL)
   throw new Error("Configure ADMIN_DATABASE_URL.");
 const pool = new Pool({
-  connectionString: process.env.ADMIN_DATABASE_URL,
+  ...databaseConfig(process.env.ADMIN_DATABASE_URL),
   max: 1,
 });
 const db = await pool.connect();

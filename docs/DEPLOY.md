@@ -6,10 +6,11 @@ Esta versão mantém o Google OAuth com Better Auth e o IAM existente. **Supabas
 
 Crie um projeto Supabase, preferencialmente em São Paulo. As tabelas da aplicação são acessadas pela API Next.js com `pg`, sem acesso direto do navegador ao banco.
 
-Crie `.env.production.local` (ignorado pelo Git) para executar os comandos de preparação no seu computador. Configure:
+Crie `.env.supabase.local` (ignorado pelo Git) para executar os comandos de preparação no seu computador. Esse nome não é carregado automaticamente pelo Next.js e mantém o banco local independente. Configure:
 
 - `ADMIN_DATABASE_URL`: conexão de administração direta ou pelo Session Pooler. Não use Transaction Pooler para migrações: elas usam advisory lock de sessão.
 - `APP_DB_PASSWORD`: senha aleatória com 20–128 caracteres alfanuméricos, `_` ou `-`, para criar o papel `vet_app`.
+- `DATABASE_SSL_CA`: conteúdo PEM do certificado raiz do Supabase, obtido em Database Settings → SSL Configuration → Download Certificate. Pode conter quebras de linha reais ou `\n`; a aplicação verifica o certificado e o hostname.
 - `DATABASE_URL`: conexão Transaction Pooler com usuário `vet_app.<project-ref>`, porta 6543 e `sslmode=verify-full`. Use o host exato indicado no painel do projeto.
 - `APP_ORG_ID=ar-saude-animal`: identificador interno atual, independente do nome comercial IR Saúde Animal.
 - `IAM_INITIAL_ADMIN_EMAIL=irsaudeanimal@gmail.com`.
@@ -17,9 +18,9 @@ Crie `.env.production.local` (ignorado pelo Git) para executar os comandos de pr
 Execute nesta ordem, depois de preencher as URLs:
 
 ```sh
-ENV_FILE=.env.production.local pnpm db:migrate
-ENV_FILE=.env.production.local pnpm db:bootstrap
-ENV_FILE=.env.production.local pnpm iam:bootstrap
+ENV_FILE=.env.supabase.local pnpm db:migrate
+ENV_FILE=.env.supabase.local pnpm db:bootstrap
+ENV_FILE=.env.supabase.local pnpm iam:bootstrap
 ```
 
 A migração cria um papel de execução sem bypass de RLS e revoga acesso de `anon` e `authenticated` às tabelas da aplicação. Use um projeto Supabase dedicado. O bootstrap cria a clínica sem exemplos e preserva configurações existentes. O convite inicial não envia e-mail. Não execute `db:seed` em produção.
@@ -32,18 +33,23 @@ Importe o repositório `gabrielpgallo/vet-home`, framework Next.js, diretório r
 
 Variáveis no ambiente Production:
 
-| Variável               | Valor                                                                  |
-| ---------------------- | ---------------------------------------------------------------------- |
-| `DATABASE_URL`         | Transaction Pooler com `vet_app.<project-ref>` e TLS verificado        |
-| `APP_ORG_ID`           | `ar-saude-animal`                                                      |
-| `AUTH_MODE`            | `google`                                                               |
-| `APP_LOCAL_MODE`       | `false`                                                                |
-| `BETTER_AUTH_URL`      | Origem HTTPS final, por exemplo `https://seu-projeto.vercel.app`       |
-| `BETTER_AUTH_SECRET`   | Segredo aleatório próprio deste ambiente, com pelo menos 32 caracteres |
-| `GOOGLE_CLIENT_ID`     | ID do cliente OAuth Web                                                |
-| `GOOGLE_CLIENT_SECRET` | Segredo do cliente OAuth Web                                           |
+| Variável               | Valor                                                                                               |
+| ---------------------- | --------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`         | Transaction Pooler com `vet_app.<project-ref>` e TLS verificado                                     |
+| `DATABASE_SSL_CA`      | Conteúdo PEM do certificado raiz Supabase                                                           |
+| `APP_ORG_ID`           | `ar-saude-animal`                                                                                   |
+| `AUTH_MODE`            | `google`                                                                                            |
+| `APP_LOCAL_MODE`       | `false`                                                                                             |
+| `BETTER_AUTH_URL`      | Opcional em Production: usa automaticamente o domínio informado pela Vercel; obrigatório em Preview |
+| `BETTER_AUTH_SECRET`   | Segredo aleatório próprio deste ambiente, com pelo menos 32 caracteres                              |
+| `GOOGLE_CLIENT_ID`     | ID do cliente OAuth Web                                                                             |
+| `GOOGLE_CLIENT_SECRET` | Segredo do cliente OAuth Web                                                                        |
 
 Não coloque `ADMIN_DATABASE_URL`, `APP_DB_PASSWORD` ou variáveis `NEXT_PUBLIC_` com segredos na Vercel. Migrations não rodam durante o build. Para Preview, use banco, segredo e OAuth separados; não copie automaticamente o acesso de produção.
+
+O domínio automático usa `VERCEL_PROJECT_PRODUCTION_URL` apenas quando `VERCEL_ENV=production`; mantenha a exposição das variáveis de sistema habilitada na Vercel. Um `BETTER_AUTH_URL` explícito tem prioridade. Nunca usamos o cabeçalho Host da requisição para definir o domínio OAuth.
+
+Caso tenha sido preparado um arquivo `.env.vercel.production`, importe-o em Settings → Environment Variables → Import .env, selecionando apenas Production. Ele contém a conexão restrita `vet_app`, o certificado, o segredo de sessão e as credenciais Google; não inclui acesso administrativo ao banco. Em seguida implante o commit mais recente da `main`. Esse arquivo é privado, ignorado pelo Git, e não deve ser publicado.
 
 No GCP, adicione `https://seu-projeto.vercel.app/api/auth/callback/google` às URLs de redirecionamento autorizadas do cliente OAuth. Preserve também a URL local enquanto ela for usada. Após mudar as variáveis, faça um novo deploy. Entre com a conta convidada e aceite o convite da clínica.
 

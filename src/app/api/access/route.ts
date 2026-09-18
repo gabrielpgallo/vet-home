@@ -5,6 +5,7 @@ import { pool, AppError } from "@/server/db";
 import { checkOrigin } from "@/server/access";
 import { acceptInvitation } from "@/server/iam";
 import { apiError } from "@/server/http";
+import { appUrl } from "@/lib/app-url";
 async function userSession() {
   if (!googleReady()) throw new AppError("Configure o login Google.", 401);
   const session = await auth.api.getSession({ headers: await headers() });
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
     if (!member.rowCount) throw new AppError("Sem acesso a esta clínica.", 403);
     (await cookies()).set("vet-clinic", orgId, {
       httpOnly: true,
-      secure: process.env.BETTER_AUTH_URL?.startsWith("https:") || false,
+      secure: appUrl()?.startsWith("https:") || false,
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60 * 24 * 7,
