@@ -15,6 +15,7 @@ async function handlePOST(req: Request) {
       companyName: form.get("companyName"),
       veterinarianName: form.get("veterinarianName"),
       crmv: form.get("crmv"),
+      sipeagro: form.get("sipeagro") ?? undefined,
       revision: Number(form.get("revision")),
     });
     const file = form.get("logo"),
@@ -27,7 +28,7 @@ async function handlePOST(req: Request) {
       throw new AppError("Escolha remover ou substituir o logo.");
     const revision = await forOrg(async (db) => {
       const result = await db.query(
-        `INSERT INTO practice_settings(organization_id,company_name,veterinarian_name,crmv,logo,revision) VALUES($1,$2,$3,$4,$5,1) ON CONFLICT(organization_id) DO UPDATE SET company_name=EXCLUDED.company_name,veterinarian_name=EXCLUDED.veterinarian_name,crmv=EXCLUDED.crmv,logo=CASE WHEN $6 THEN NULL WHEN $5::bytea IS NOT NULL THEN $5 ELSE practice_settings.logo END,revision=practice_settings.revision+1,updated_at=now() WHERE practice_settings.revision=$7 RETURNING revision`,
+        `INSERT INTO practice_settings(organization_id,company_name,veterinarian_name,crmv,logo,revision,sipeagro) VALUES($1,$2,$3,$4,$5,1,COALESCE($8::text,'')) ON CONFLICT(organization_id) DO UPDATE SET company_name=EXCLUDED.company_name,veterinarian_name=EXCLUDED.veterinarian_name,crmv=EXCLUDED.crmv,sipeagro=COALESCE($8::text,practice_settings.sipeagro),logo=CASE WHEN $6 THEN NULL WHEN $5::bytea IS NOT NULL THEN $5 ELSE practice_settings.logo END,revision=practice_settings.revision+1,updated_at=now() WHERE practice_settings.revision=$7 RETURNING revision`,
         [
           getOrgId(),
           data.companyName,
@@ -36,6 +37,7 @@ async function handlePOST(req: Request) {
           logo,
           remove,
           data.revision,
+          data.sipeagro ?? null,
         ],
       );
       if (!result.rowCount)

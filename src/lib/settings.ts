@@ -3,6 +3,7 @@ export const defaultSettings = {
   companyName: "IR Saúde Animal",
   veterinarianName: "Isabelli Ricordi",
   crmv: "CRMV-SP 53.181",
+  sipeagro: "",
   hasLogo: false,
   revision: 0,
 };
@@ -11,6 +12,7 @@ export const settingsSchema = z
     companyName: z.string().trim().min(1).max(150),
     veterinarianName: z.string().trim().min(1).max(120),
     crmv: z.string().trim().min(1).max(60),
+    sipeagro: z.string().trim().max(60).optional(),
     revision: z.number().int().min(0),
   })
   .strict();

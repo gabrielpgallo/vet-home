@@ -18,6 +18,7 @@ export function Settings({
       settings.veterinarianName,
     ),
     [crmv, setCrmv] = useState(settings.crmv),
+    [sipeagro, setSipeagro] = useState(settings.sipeagro || ""),
     [logo, setLogo] = useState<File | null>(null),
     [preview, setPreview] = useState(""),
     [remove, setRemove] = useState(false),
@@ -27,6 +28,7 @@ export function Settings({
     companyName !== settings.companyName ||
     veterinarianName !== settings.veterinarianName ||
     crmv !== settings.crmv ||
+    sipeagro !== (settings.sipeagro || "") ||
     !!logo ||
     remove;
   useEffect(() => {
@@ -64,6 +66,7 @@ export function Settings({
         body.set("companyName", companyName);
         body.set("veterinarianName", veterinarianName);
         body.set("crmv", crmv);
+        body.set("sipeagro", sipeagro);
         body.set("revision", String(settings.revision));
         body.set("removeLogo", String(remove));
         if (logo) body.set("logo", logo);
@@ -189,6 +192,20 @@ export function Settings({
               placeholder="CRMV-SP 53.181"
             />
           </label>
+          <label>
+            Registro MAPA / SIPEAGRO
+            <input
+              value={sipeagro}
+              onChange={(e) => setSipeagro(e.target.value)}
+              maxLength={60}
+              placeholder="Número do cadastro no MAPA/SIPEAGRO"
+              aria-describedby="sipeagro-help"
+            />
+          </label>
+          <p className="hint" id="sipeagro-help">
+            Opcional. Quando preenchido, aparece nas receitas junto aos dados da
+            veterinária responsável.
+          </p>
           <p className="hint">
             Os dados profissionais identificam a responsável. A assinatura
             digital ainda não está integrada.

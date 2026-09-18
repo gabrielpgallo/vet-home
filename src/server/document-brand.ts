@@ -4,7 +4,10 @@ export function documentBrand(
   brand: PracticeBrand,
   reference: string,
   footerNote = "Documento sem assinatura digital.",
+  options: { showSipeagro?: boolean } = {},
 ) {
+  const sipeagro = options.showSipeagro ? brand.sipeagro?.trim() : "";
+  const extraFooterHeight = sipeagro ? 13 : 0;
   const pages = doc.bufferedPageRange();
   for (let i = pages.start; i < pages.start + pages.count; i++) {
     doc.switchToPage(i);
@@ -44,13 +47,27 @@ export function documentBrand(
     );
     doc
       .fontSize(nameSize)
-      .text(brand.veterinarianName, 48, doc.page.height - 79, {
-        lineBreak: false,
-      });
+      .text(
+        brand.veterinarianName,
+        48,
+        doc.page.height - 79 - extraFooterHeight,
+        {
+          lineBreak: false,
+        },
+      );
     doc
       .font("Helvetica")
       .fontSize(8)
-      .text(brand.crmv, 48, doc.page.height - 64, { lineBreak: false });
+      .text(brand.crmv, 48, doc.page.height - 64 - extraFooterHeight, {
+        lineBreak: false,
+      });
+    if (sipeagro) {
+      const label = `Registro MAPA / SIPEAGRO: ${sipeagro}`;
+      doc.fontSize(
+        Math.min(8, (8 * (doc.page.width - 96)) / doc.widthOfString(label)),
+      );
+      doc.text(label, 48, doc.page.height - 64, { lineBreak: false });
+    }
     doc
       .fontSize(8)
       .fillColor("#69768b")

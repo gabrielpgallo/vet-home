@@ -74,7 +74,9 @@ async function handleGET(
     });
     if (rx.instructions)
       doc.fontSize(11).text("Orientações: " + rx.instructions);
-    documentBrand(doc, brand, `Receita ${id} - Rascunho`);
+    documentBrand(doc, brand, `Receita ${id} - Rascunho`, undefined, {
+      showSipeagro: true,
+    });
     doc.end();
     return new NextResponse(new Uint8Array(await output), {
       headers: {
