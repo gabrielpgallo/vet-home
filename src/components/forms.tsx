@@ -536,10 +536,6 @@ export function ApplicationForm({
       {p && (
         <div className="calculation">
           <div>
-            <span>Custo / {p.unit}</span>
-            <span>{money(p.costCents)}</span>
-          </div>
-          <div>
             <span>Venda / {p.unit}</span>
             <span>{money(p.saleCents)}</span>
           </div>

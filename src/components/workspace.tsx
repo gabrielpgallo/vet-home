@@ -41,6 +41,7 @@ import {
   timeLabel,
   money,
   vitalFields,
+  historicalVitalFields,
   type Command,
 } from "@/lib/domain";
 import type { Bootstrap, Consultation, TimelineEvent } from "@/lib/types";
@@ -1112,7 +1113,7 @@ function Measurements({ consultation: c }: { consultation?: Consultation }) {
     <>
       <p className="hint">{dateLabel(c.updatedAt)}</p>
       <dl className="measurement-list">
-        {vitalFields
+        {historicalVitalFields
           .filter(([k]) => c.vitals[k])
           .map(([k, label, unit]) => (
             <div key={k}>

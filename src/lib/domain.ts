@@ -14,7 +14,11 @@ export const vitalFields = [
   ["temperature", "Temperatura", "°C"],
   ["heartRate", "Freq. cardíaca", "bpm"],
   ["respiratoryRate", "Freq. respiratória", "irpm"],
-  ["systolic", "Pressão sistólica", "mmHg"],
+  ["systolic", "Pressão arterial sistólica", "mmHg"],
+] as const;
+// Keep older measurements readable without offering diastolic input in new visits.
+export const historicalVitalFields = [
+  ...vitalFields,
   ["diastolic", "Pressão diastólica", "mmHg"],
 ] as const;
 export function parseFixed(value: string, decimals = 2): number {
