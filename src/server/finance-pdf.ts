@@ -3,10 +3,12 @@ import { money, dateLabel } from "@/lib/domain";
 import type { FinanceReport } from "@/lib/finance";
 import type { PracticeBrand } from "./settings";
 import { documentBrand } from "./document-brand";
+import { brandPalette } from "@/lib/brand-color";
 export function financePdf(
   report: FinanceReport,
   brand: PracticeBrand,
 ): Promise<Buffer> {
+  const palette = brandPalette(brand.primaryColor);
   const doc = new PDFDocument({
     size: "A4",
     margins: { top: 100, bottom: 105, left: 48, right: 48 },
@@ -60,12 +62,12 @@ export function financePdf(
       }
       const y = doc.y;
       let x = 48;
-      if (header) doc.rect(48, y, width, height).fill("#edf3ff");
+      if (header) doc.rect(48, y, width, height).fill(palette.accent);
       cells.forEach((cell, i) => {
         doc
           .font(header ? "Helvetica-Bold" : "Helvetica")
           .fontSize(header ? 8 : 8.5)
-          .fillColor(header ? "#245bdb" : "#24334b")
+          .fillColor(header ? palette.primary : "#24334b")
           .text(cell, x + 6, y + 7, { width: widths[i] - 12, lineGap: 2 });
         x += widths[i];
       });

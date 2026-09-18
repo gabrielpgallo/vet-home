@@ -1,5 +1,6 @@
 import type { PracticeBrand } from "./settings";
 import { veterinarianDisplayName } from "@/lib/settings";
+import { brandPalette } from "@/lib/brand-color";
 export function documentBrand(
   doc: PDFKit.PDFDocument,
   brand: PracticeBrand,
@@ -22,7 +23,10 @@ export function documentBrand(
         align: "center",
         valign: "center",
       });
-    doc.font("Helvetica-Bold").fontSize(14).fillColor("#245bdb");
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(14)
+      .fillColor(brandPalette(brand.primaryColor).primary);
     const fontSize = Math.min(
       14,
       (14 * width) / doc.widthOfString(brand.companyName),

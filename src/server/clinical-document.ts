@@ -2,6 +2,7 @@ import PDFDocument from "pdfkit";
 import { dateKey, dateLabel } from "@/lib/domain";
 import type { PracticeBrand } from "./settings";
 import { veterinarianDisplayName } from "@/lib/settings";
+import { brandPalette } from "@/lib/brand-color";
 
 export interface ClinicalPatient {
   patient: string;
@@ -38,7 +39,6 @@ export function patientAge(birthDate: string | null, on: string): string {
 
 const ink = "#203047",
   muted = "#66758a",
-  blue = "#245bdb",
   rule = "#dfe6ef";
 const left = 48,
   width = 499.28,
@@ -58,6 +58,7 @@ export function clinicalDocument(
   brand: PracticeBrand,
   meta: { kind: "prescription" | "exam"; id: string; date: string },
 ) {
+  const primary = brandPalette(brand.primaryColor).primary;
   const prescription = meta.kind === "prescription";
   const title = prescription ? "Receita veterinária" : "Solicitação de exame";
   const doc = new PDFDocument({
@@ -114,7 +115,7 @@ export function clinicalDocument(
     .filter(Boolean)
     .map((text) => ({ text, size: 8.5, color: muted, gap: 2 }));
   const brandLines: Line[] = [
-    { text: brand.companyName, size: 16, bold: true, color: blue, gap: 5 },
+    { text: brand.companyName, size: 16, bold: true, color: primary, gap: 5 },
     { text: "Medicina veterinária em domicílio", size: 9, color: muted },
   ];
   const brandX = left + (brand.logo ? 50 : 0);
@@ -216,7 +217,7 @@ export function clinicalDocument(
             ? "CUIDADO QUE ACOMPANHA"
             : "CONTINUIDADE DO CUIDADO",
           size: 8,
-          color: blue,
+          color: primary,
         },
       ],
       left,
@@ -265,7 +266,7 @@ export function clinicalDocument(
       text: pendingSection,
       size: 10,
       bold: true,
-      color: blue,
+      color: primary,
       gap: 7,
     };
     const sectionHeight = pendingSection ? measure([sectionLine], width) : 0;

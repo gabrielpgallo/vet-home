@@ -3,6 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { Building2, Upload } from "lucide-react";
 import type { PracticeSettings } from "@/lib/settings";
+import {
+  brandPalette,
+  DEFAULT_PRIMARY_COLOR,
+  HEX_COLOR,
+} from "@/lib/brand-color";
 import { AsyncForm } from "./forms";
 export function Settings({
   settings,
@@ -14,6 +19,9 @@ export function Settings({
   guardRef: React.MutableRefObject<null | (() => boolean)>;
 }) {
   const [companyName, setCompanyName] = useState(settings.companyName),
+    [primaryColor, setPrimaryColor] = useState(
+      settings.primaryColor || DEFAULT_PRIMARY_COLOR,
+    ),
     [veterinarianName, setVeterinarianName] = useState(
       settings.veterinarianName,
     ),
@@ -32,9 +40,12 @@ export function Settings({
     [preview, setPreview] = useState(""),
     [remove, setRemove] = useState(false),
     [error, setError] = useState("");
+  const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [removeGeminiKey, setRemoveGeminiKey] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const dirty =
     companyName !== settings.companyName ||
+    primaryColor !== settings.primaryColor ||
     veterinarianName !== settings.veterinarianName ||
     veterinarianTitle !== settings.veterinarianTitle ||
     crmv !== settings.crmv ||
@@ -43,6 +54,8 @@ export function Settings({
       (key) => details[key] !== (settings[key] || ""),
     ) ||
     !!logo ||
+    !!geminiApiKey ||
+    removeGeminiKey ||
     remove;
   useEffect(() => {
     guardRef.current = () =>
@@ -75,8 +88,13 @@ export function Settings({
       submit="Salvar configurações"
       onSubmit={async () => {
         if (error) throw Error(error);
+        if (!HEX_COLOR.test(primaryColor))
+          throw Error(
+            "Informe uma cor hexadecimal com seis dígitos, como #245bdb.",
+          );
         const body = new FormData();
         body.set("companyName", companyName);
+        body.set("primaryColor", primaryColor);
         body.set("veterinarianName", veterinarianName);
         body.set("veterinarianTitle", veterinarianTitle);
         body.set("crmv", crmv);
@@ -85,6 +103,8 @@ export function Settings({
           body.set(key, value);
         body.set("revision", String(settings.revision));
         body.set("removeLogo", String(remove));
+        if (geminiApiKey) body.set("geminiApiKey", geminiApiKey);
+        body.set("removeGeminiKey", String(removeGeminiKey));
         if (logo) body.set("logo", logo);
         const r = await fetch("/api/settings", { method: "POST", body });
         const result = await r.json();
@@ -112,6 +132,84 @@ export function Settings({
               maxLength={150}
             />
           </label>
+          <div className="primary-color-editor stack">
+            <label htmlFor="primary-color-hex">Cor primária</label>
+            <div className="primary-color-controls">
+              <input
+                type="color"
+                aria-label="Selecionar cor primária"
+                value={
+                  HEX_COLOR.test(primaryColor)
+                    ? primaryColor
+                    : DEFAULT_PRIMARY_COLOR
+                }
+                onChange={(e) => setPrimaryColor(e.target.value)}
+              />
+              <input
+                id="primary-color-hex"
+                value={primaryColor}
+                onChange={(e) => setPrimaryColor(e.target.value)}
+                placeholder="#245bdb"
+                maxLength={7}
+                pattern="#[0-9a-fA-F]{6}"
+                required
+                spellCheck={false}
+                autoComplete="off"
+                aria-describedby="primary-color-help"
+              />
+              <button
+                type="button"
+                onClick={() => setPrimaryColor(DEFAULT_PRIMARY_COLOR)}
+              >
+                Restaurar padrão
+              </button>
+            </div>
+            <p className="hint" id="primary-color-help">
+              Escolha a cor do logo ou informe seu código. Será aplicada ao
+              sistema e aos PDFs ao salvar. Os tons de texto se adaptam para
+              manter a leitura.
+            </p>
+            <div
+              className="primary-color-previews"
+              aria-label="Prévia da cor nos temas claro e escuro"
+            >
+              {(["light", "dark"] as const).map((mode) => {
+                const palette = brandPalette(primaryColor, mode);
+                return (
+                  <div
+                    className="primary-color-preview"
+                    key={mode}
+                    style={{
+                      background: palette.surface,
+                      color: mode === "light" ? "#172640" : "#e8eef9",
+                    }}
+                  >
+                    <strong>
+                      {mode === "light" ? "Tema claro" : "Tema escuro"}
+                    </strong>
+                    <span
+                      className="primary-color-preview-selection"
+                      style={{
+                        color: palette.primary,
+                        background: palette.accent,
+                      }}
+                    >
+                      Agenda
+                    </span>
+                    <span
+                      className="primary-color-preview-button"
+                      style={{
+                        background: palette.fill,
+                        color: palette.onPrimary,
+                      }}
+                    >
+                      Agendar visita
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
           <div className="logo-editor">
             <div className="logo-preview">
               {image ? (
@@ -271,6 +369,69 @@ export function Settings({
               }
             />
           </label>
+        </section>
+        <section className="panel stack">
+          <div>
+            <h2>IA para anamnese · Gemini</h2>
+            <p className="muted">
+              Organiza suas anotações e transcreve áudios. A sugestão só
+              substitui o texto depois da sua revisão.
+            </p>
+          </div>
+          <p className="hint" role="status">
+            {removeGeminiKey
+              ? "A chave será removida ao salvar."
+              : settings.hasGeminiKey
+                ? "Chave cadastrada. Deixe o campo vazio para mantê-la."
+                : "Cadastre uma chave para habilitar a IA nesta clínica."}
+          </p>
+          <label>
+            {settings.hasGeminiKey
+              ? "Substituir chave de API"
+              : "Chave de API do Gemini"}
+            <input
+              type="password"
+              name="geminiApiKey"
+              autoComplete="new-password"
+              value={geminiApiKey}
+              maxLength={200}
+              onChange={(e) => {
+                setGeminiApiKey(e.target.value);
+                setRemoveGeminiKey(false);
+              }}
+              placeholder="Cole a chave do Google AI Studio"
+            />
+          </label>
+          {settings.hasGeminiKey && (
+            <button
+              type="button"
+              onClick={() => {
+                setGeminiApiKey("");
+                setRemoveGeminiKey(!removeGeminiKey);
+              }}
+            >
+              {removeGeminiKey
+                ? "Manter chave atual"
+                : "Remover chave ao salvar"}
+            </button>
+          )}
+          <p className="hint">
+            A chave é salva criptografada e não volta ao navegador. Apenas o
+            texto e o áudio selecionados serão enviados ao Google quando você
+            solicitar uma geração.
+          </p>
+          <p className="hint">
+            Para dados reais, confira as regras de uso e privacidade do seu
+            projeto Gemini. A quota gratuita permite uso do conteúdo pelo Google
+            para melhoria dos modelos.{" "}
+            <a
+              href="https://ai.google.dev/gemini-api/terms"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Termos do Gemini
+            </a>
+          </p>
         </section>
       </div>
     </AsyncForm>

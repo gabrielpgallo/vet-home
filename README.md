@@ -33,6 +33,7 @@ O resultado por visita desconta aplicações e despesas vinculadas com competên
 ### Demais funcionalidades
 
 - Configurações da empresa: nome, logo PNG/JPEG, veterinária responsável, CRMV e MAPA/SIPEAGRO. Telefone, e-mail, CNPJ e CPF da veterinária são opcionais e aparecem nos documentos clínicos quando preenchidos. O cadastro do tutor também aceita CPF/CNPJ opcional.
+- Cor primária por clínica: seletor de cor, código hexadecimal, prévias clara/escura e restauração do padrão. Aplicada ao sistema após salvar e aos PDFs; os tons de texto se ajustam para contraste e os botões preservam a cor escolhida.
 
 - Cadastro rápido de tutor com nome, endereço e nomes dos animais; edição posterior de tutor e paciente.
 - Agenda com visões de dia, semana e mês, navegação por período e totais correspondentes; horário exato, duração, endereço, motivo, tutor pesquisável e seleção dos animais da visita.
@@ -76,6 +77,7 @@ Stack: Next.js App Router, React, TypeScript, PostgreSQL, `pg`, Zod e PDFKit. O 
 - `scripts`: ambiente, migração e exemplos.
 - `tests`: regras de domínio e integração real com PostgreSQL.
 - [Escopo do produto](docs/PRODUTO.md).
+- [Assistente de anamnese: texto, gravação e revisão com IA](docs/IA.md).
 
 ### Login Google e IAM
 

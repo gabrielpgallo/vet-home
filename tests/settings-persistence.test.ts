@@ -111,6 +111,7 @@ it("persists the registration, preserves it for old clients, checks revision and
     veterinarianCpf: "",
   });
   expect((await brand()).veterinarianTitle).toBe("Dra.");
+  expect((await brand()).primaryColor).toBe("#245bdb");
   expect((await save(6, undefined, { veterinarianTitle: "Dr." })).status).toBe(
     200,
   );
@@ -124,4 +125,25 @@ it("persists the registration, preserves it for old clients, checks revision and
     200,
   );
   expect((await brand()).veterinarianTitle).toBe("Dra.");
+  expect((await save(9, undefined, { primaryColor: "#148A83" })).status).toBe(
+    200,
+  );
+  expect((await brand()).primaryColor).toBe("#148a83");
+  expect((await save(10)).status).toBe(200);
+  expect((await brand()).primaryColor).toBe("#148a83");
+  expect(
+    (await requestIdentity.run({ ...actor, orgId: otherOrg }, loadBrand))
+      .primaryColor,
+  ).toBe("#245bdb");
+  expect((await save(11, undefined, { primaryColor: "invalid" })).status).toBe(
+    400,
+  );
+  expect((await save(10, undefined, { primaryColor: "#ff0000" })).status).toBe(
+    409,
+  );
+  expect((await brand()).primaryColor).toBe("#148a83");
+  expect((await save(11, undefined, { primaryColor: "#245bdb" })).status).toBe(
+    200,
+  );
+  expect((await brand()).primaryColor).toBe("#245bdb");
 });

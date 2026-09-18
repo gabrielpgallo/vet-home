@@ -21,6 +21,7 @@ const appTables = [
   "mutations",
   "audit_log",
   "practice_settings",
+  "clinic_ai_settings",
   "expenses",
   "auth_user",
   "auth_session",

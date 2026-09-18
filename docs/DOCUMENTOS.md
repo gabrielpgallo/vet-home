@@ -8,12 +8,13 @@ Receitas e solicitações de exame compartilham o layout em `src/server/clinical
 - Rodapé: veterinária, CRMV, CPF opcional e MAPA/SIPEAGRO nas receitas. Os dados de identificação e a numeração se repetem em todas as páginas.
 - Assinatura: área em branco à direita, sem borda ou rótulo. Não há integração com gov.br ou assinatura criptográfica. A receita continua identificada como rascunho sem assinatura digital.
 - Tratamento configurável em Configurações: Dra. (Médica veterinária) ou Dr. (Médico veterinário). O padrão é Dra.; não se infere o tratamento pelo nome. O título não é duplicado quando já consta no nome digitado.
+- Cor primária configurável por clínica: documentos clínicos e financeiros usam uma variação legível da cor escolhida sobre o papel branco. O modo escuro da interface não altera o fundo dos PDFs.
 
 Os dados vêm do cadastro no momento do download. Um novo download pode refletir alterações posteriores no cadastro; ainda não há versionamento imutável de documentos emitidos.
 
 ## Banco e implantação
 
-Aplicar `007_document_details.sql` e `008_veterinarian_title.sql` com `pnpm db:migrate` **antes de publicar o código**. Para o ambiente Supabase configurado localmente:
+Aplicar as migrations pendentes, incluindo `007_document_details.sql`, `008_veterinarian_title.sql` e `009_primary_color.sql`, com `pnpm db:migrate` **antes de publicar o código**. Para o ambiente Supabase configurado localmente:
 
 ```sh
 ENV_FILE=.env.supabase.local pnpm db:migrate

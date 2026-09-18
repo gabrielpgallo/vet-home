@@ -7,13 +7,14 @@ export type PracticeBrand = PracticeSettings & { logo: Buffer | null };
 export async function readSettings(db: PoolClient): Promise<PracticeBrand> {
   const row = (
     await db.query(
-      "SELECT company_name,veterinarian_name,veterinarian_title,crmv,sipeagro,phone,email,cnpj,veterinarian_cpf,logo,revision FROM practice_settings WHERE organization_id=$1",
+      "SELECT company_name,primary_color,veterinarian_name,veterinarian_title,crmv,sipeagro,phone,email,cnpj,veterinarian_cpf,logo,revision,EXISTS(SELECT 1 FROM clinic_ai_settings ai WHERE ai.organization_id=practice_settings.organization_id) AS has_gemini_key FROM practice_settings WHERE organization_id=$1",
       [getOrgId()],
     )
   ).rows[0];
   return row
     ? {
         companyName: row.company_name,
+        primaryColor: row.primary_color,
         veterinarianName: row.veterinarian_name,
         veterinarianTitle: row.veterinarian_title,
         crmv: row.crmv,
@@ -23,6 +24,7 @@ export async function readSettings(db: PoolClient): Promise<PracticeBrand> {
         cnpj: row.cnpj,
         veterinarianCpf: row.veterinarian_cpf,
         hasLogo: !!row.logo,
+        hasGeminiKey: row.has_gemini_key,
         revision: row.revision,
         logo: row.logo,
       }

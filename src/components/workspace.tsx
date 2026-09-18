@@ -3,7 +3,9 @@ import { Iam, MyAccount } from "./iam";
 import { can, type Permission } from "@/lib/permissions";
 import Image from "next/image";
 import { Settings } from "./settings";
+import { AnamnesisAI } from "./anamnesis-ai";
 import { defaultSettings } from "@/lib/settings";
+import { brandThemeStyle } from "@/lib/brand-color";
 import { Finance } from "./finance";
 import { Agenda } from "./agenda";
 import type { CalendarView } from "@/lib/calendar";
@@ -221,7 +223,10 @@ export default function Workspace() {
     </button>
   );
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell clinic-theme"
+      style={brandThemeStyle(brand.primaryColor)}
+    >
       <aside className="sidebar">
         <a
           className="brand"
@@ -1414,6 +1419,14 @@ function Encounter({
                   placeholder="Escreva livremente ou cole a anamnese que preparou. Registre a queixa, o exame físico, suas hipóteses e a conduta."
                 />
               </label>
+              <AnamnesisAI
+                id={c.id}
+                revision={c.revision}
+                notes={notes}
+                configured={data.settings.hasGeminiKey}
+                disabled={busy || c.status === "completed"}
+                onApply={setNotes}
+              />
               <h3 className="spaced">Medições</h3>
               <div className="vitals-grid">
                 {vitalFields.map(([key, label, unit]) => (
