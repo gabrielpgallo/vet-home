@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { forOrg, AppError } from "@/server/db";
-import { requireLocalAccess } from "@/server/access";
+import { withAccess } from "@/server/access";
 import { apiError } from "@/server/http";
-export async function GET(
+async function handleGET(
   _req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireLocalAccess();
     const id = z
       .string()
       .uuid()
@@ -31,3 +30,5 @@ export async function GET(
     return apiError(e);
   }
 }
+
+export const GET = withAccess("clinical.read", handleGET);

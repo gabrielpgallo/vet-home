@@ -1,17 +1,18 @@
+import { loadBrand } from "@/server/settings";
+import { documentBrand } from "@/server/document-brand";
 import { NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
 import { z } from "zod";
 import { forOrg, AppError } from "@/server/db";
-import { requireLocalAccess } from "@/server/access";
+import { withAccess } from "@/server/access";
 import { apiError } from "@/server/http";
 import type { RxItem } from "@/lib/domain";
 export const runtime = "nodejs";
-export async function GET(
+async function handleGET(
   _req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireLocalAccess();
     const id = z
       .string()
       .uuid()
@@ -26,10 +27,15 @@ export async function GET(
         ).rows[0],
     );
     if (!rx) throw new AppError("Receita não encontrada.", 404);
+    const brand = await loadBrand();
     const doc = new PDFDocument({
         size: "A4",
-        margin: 48,
-        info: { Title: "Rascunho de receita — " + rx.patient },
+        margins: { top: 100, bottom: 105, left: 48, right: 48 },
+        bufferPages: true,
+        info: {
+          Title: "Rascunho de receita — " + rx.patient,
+          Author: brand.companyName,
+        },
       }),
       chunks: Buffer[] = [];
     const output = new Promise<Buffer>((resolve, reject) => {
@@ -37,16 +43,17 @@ export async function GET(
       doc.on("end", () => resolve(Buffer.concat(chunks)));
       doc.on("error", reject);
     });
-    const banner = () => {
-      doc
-        .fontSize(10)
-        .fillColor("#526078")
-        .text("RASCUNHO — SEM ASSINATURA — NÃO EMITIDO");
-      doc.moveDown();
-    };
-    banner();
-    doc.on("pageAdded", banner);
-    doc.fontSize(21).fillColor("#15305a").text("AR Saúde Animal");
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(22)
+      .fillColor("#172640")
+      .text("Receita veterinária");
+    doc.moveDown(0.5);
+    doc
+      .font("Helvetica")
+      .fontSize(10)
+      .fillColor("#69768b")
+      .text("RASCUNHO - SEM ASSINATURA - NÃO EMITIDO");
     doc.moveDown();
     doc
       .fontSize(12)
@@ -55,7 +62,7 @@ export async function GET(
       .text("Tutor: " + rx.tutor);
     doc.moveDown();
     (rx.items as RxItem[]).forEach((item, i) => {
-      if (doc.y > 650) doc.addPage();
+      if (doc.y > 610) doc.addPage();
       doc.fontSize(13).text(`${i + 1}. ${item.name} — ${item.concentration}`);
       doc
         .fontSize(11)
@@ -67,6 +74,7 @@ export async function GET(
     });
     if (rx.instructions)
       doc.fontSize(11).text("Orientações: " + rx.instructions);
+    documentBrand(doc, brand, `Receita ${id} - Rascunho`);
     doc.end();
     return new NextResponse(new Uint8Array(await output), {
       headers: {
@@ -79,3 +87,5 @@ export async function GET(
     return apiError(e);
   }
 }
+
+export const GET = withAccess("clinical.read", handleGET);

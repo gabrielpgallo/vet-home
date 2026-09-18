@@ -5,6 +5,7 @@ import "../scripts/env";
 const org = "test-" + randomUUID();
 process.env.APP_ORG_ID = org;
 const { runCommand } = await import("../src/server/commands");
+const { loadData } = await import("../src/server/data");
 const { forOrg, pool } = await import("../src/server/db");
 const admin = new Pool({ connectionString: process.env.ADMIN_DATABASE_URL });
 const execute = (cmd: unknown, id = randomUUID()) => runCommand(cmd, id);
@@ -76,6 +77,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   for (const table of [
+    "expenses",
     "audit_log",
     "mutations",
     "timeline",
@@ -292,5 +294,77 @@ describe.sequential("persistência e regras do atendimento", () => {
           .rows[0].status,
     );
     expect(status).toBe("scheduled");
+  });
+});
+
+describe.sequential("despesas", () => {
+  it("persiste despesa de forma idempotente, protege edição e mantém exclusão no histórico", async () => {
+    const data = {
+      description: "Laboratório teste",
+      category: "Laboratório",
+      amountCents: 1500,
+      occurredOn: "2026-08-01",
+      paidOn: null,
+      visitId: visit,
+      notes: "",
+    };
+    const requestId = randomUUID();
+    const [first, again] = await Promise.all([
+      execute({ type: "expense.create", data }, requestId),
+      execute({ type: "expense.create", data }, requestId),
+    ]);
+    expect(first.id).toBe(again.id);
+    const loaded = (await loadData()).expenses.find((e) => e.id === first.id);
+    expect(loaded?.occurredOn).toBe("2026-08-01");
+    expect(loaded?.amountCents).toBe(1500);
+    expect((await pool.query("SELECT id FROM expenses")).rowCount).toBe(0);
+    expect(
+      (
+        await forOrg(
+          (db) => db.query("SELECT id FROM expenses"),
+          "outra-organizacao",
+        )
+      ).rowCount,
+    ).toBe(0);
+    await execute({
+      type: "expense.update",
+      id: first.id,
+      revision: 0,
+      data: { ...data, amountCents: 1800 },
+    });
+    await expect(
+      execute({ type: "expense.update", id: first.id, revision: 0, data }),
+    ).rejects.toThrow("outra aba");
+    await execute({ type: "expense.void", id: first.id, revision: 1 });
+    const stored = await forOrg(
+      async (db) =>
+        (
+          await db.query(
+            "SELECT status,amount_cents FROM expenses WHERE id=$1",
+            [first.id],
+          )
+        ).rows[0],
+    );
+    expect(stored).toEqual({ status: "voided", amount_cents: 1800 });
+  });
+  it("rejeita pagamento futuro e visita de outra organização", async () => {
+    const data = {
+      description: "Teste",
+      category: "Outras despesas",
+      amountCents: 100,
+      occurredOn: "2026-08-01",
+      paidOn: "9999-01-01",
+      visitId: null,
+      notes: "",
+    };
+    await expect(execute({ type: "expense.create", data })).rejects.toThrow(
+      "futuro",
+    );
+    await expect(
+      execute({
+        type: "expense.create",
+        data: { ...data, paidOn: null, visitId: randomUUID() },
+      }),
+    ).rejects.toThrow("não encontrado");
   });
 });

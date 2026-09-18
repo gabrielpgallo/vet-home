@@ -7,7 +7,7 @@ import { pool } from "../src/server/db";
 const admin = new Pool({ connectionString: process.env.ADMIN_DATABASE_URL });
 await admin.query(
   "INSERT INTO organizations(id,name) VALUES($1,$2) ON CONFLICT DO NOTHING",
-  [ORG_ID, "AR Saúde Animal"],
+  [ORG_ID, "IR Saúde Animal"],
 );
 const existing = await admin.query(
   "SELECT 1 FROM tutors WHERE organization_id=$1 LIMIT 1",

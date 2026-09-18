@@ -1,3 +1,4 @@
+import { readSettings } from "./settings";
 import { forOrg } from "./db";
 import type { Bootstrap } from "@/lib/types";
 const camelRows = (rows: Record<string, unknown>[]) =>
@@ -24,9 +25,18 @@ export async function loadData(): Promise<Bootstrap> {
       examLinks: "exam_links",
       timeline: "timeline",
     };
-    const result: Record<string, unknown> = {};
+    const { logo, ...settings } = await readSettings(db);
+    void logo;
+    const result: Record<string, unknown> = { settings };
     for (const [key, table] of Object.entries(tables))
       result[key] = camelRows((await db.query(`SELECT * FROM ${table}`)).rows);
+    result.expenses = camelRows(
+      (
+        await db.query(
+          "SELECT e.*,to_char(occurred_on,'YYYY-MM-DD') AS occurred_on,to_char(paid_on,'YYYY-MM-DD') AS paid_on FROM expenses e WHERE e.status='active' ORDER BY e.occurred_on DESC,e.created_at DESC",
+        )
+      ).rows,
+    );
     result.visits = camelRows(
       (
         await db.query(

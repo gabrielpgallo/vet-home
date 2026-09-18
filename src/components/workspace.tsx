@@ -1,4 +1,12 @@
 "use client";
+import { Iam, MyAccount } from "./iam";
+import { can, type Permission } from "@/lib/permissions";
+import Image from "next/image";
+import { Settings } from "./settings";
+import { defaultSettings } from "@/lib/settings";
+import { Finance } from "./finance";
+import { Agenda } from "./agenda";
+import type { CalendarView } from "@/lib/calendar";
 import {
   useCallback,
   useEffect,
@@ -22,6 +30,8 @@ import {
   Stethoscope,
   SunMoon,
   Search,
+  Settings2,
+  Wallet,
 } from "lucide-react";
 import {
   dateKey,
@@ -54,7 +64,11 @@ type Page =
   | "visit"
   | "patient"
   | "consultation"
-  | "prescription";
+  | "prescription"
+  | "settings"
+  | "finance"
+  | "iam"
+  | "account";
 type Modal = {
   kind:
     | "tutor"
@@ -77,6 +91,9 @@ const nav = [
   ["tutors", "Tutores", Users],
   ["products", "Produtos", Package],
   ["pending", "Pendências", ClipboardList],
+  ["finance", "Financeiro", Wallet],
+  ["settings", "Configurações", Settings2],
+  ["iam", "Usuários e acessos", Users],
 ] as const;
 const statusLabel = {
   scheduled: "Agendada",
@@ -91,14 +108,26 @@ export default function Workspace() {
     [selected, setSelected] = useState(""),
     [modal, setModal] = useState<Modal | null>(null),
     [day, setDay] = useState(dateKey()),
+    [agendaView, setAgendaView] = useState<CalendarView>("day"),
     [query, setQuery] = useState(""),
     [toast, setToast] = useState("");
+  const allowed = (permission: Permission) =>
+    !!data?.identity && can(data.identity.role, permission);
+  const clinical = allowed("clinical.read");
+  const brand = data?.settings || defaultSettings;
+  useEffect(() => {
+    document.title = brand.companyName;
+  }, [brand.companyName]);
   const { theme, setTheme } = useTheme();
   const pending = useRef(new Map<string, string>()),
     guardRef = useRef<null | (() => boolean)>(null);
   const refresh = useCallback(async () => {
     const r = await fetch("/api/data", { cache: "no-store" });
     const body = await r.json();
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- Full reload discards data and route caches after identity changes.
+    if (r.status === 401) window.location.assign("/login");
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- Full reload discards data and route caches after identity changes.
+    if (r.status === 403) window.location.assign("/access");
     if (!r.ok) throw Error(body.error || "Não foi possível carregar os dados.");
     setData(body);
     setFailure("");
@@ -134,6 +163,7 @@ export default function Workspace() {
     return { ...result, data: fresh };
   };
   function go(next: Page, id = "") {
+    if (["consultation", "prescription"].includes(next) && !clinical) return;
     if (guardRef.current && !guardRef.current()) return;
     guardRef.current = null;
     setPage(next);
@@ -165,7 +195,7 @@ export default function Workspace() {
     return (
       <div className="page-heading">
         <div>
-          <div className="eyebrow">AR · Saúde animal</div>
+          <div className="eyebrow">{brand.companyName}</div>
           <h1>{title}</h1>
           <p className="muted">{subtitle}</p>
         </div>
@@ -201,34 +231,60 @@ export default function Workspace() {
             go("agenda");
           }}
         >
-          <span className="brand-icon">
-            <PawPrint size={25} />
-          </span>
-          <span>
-            AR<span className="brand-sub">SAÚDE ANIMAL</span>
-          </span>
+          {brand.hasLogo ? (
+            <Image
+              className="brand-logo"
+              src={`/api/settings/logo?v=${brand.revision}`}
+              alt={`Logo de ${brand.companyName}`}
+              width={48}
+              height={48}
+              unoptimized
+            />
+          ) : (
+            <span className="brand-icon">
+              <PawPrint size={25} />
+            </span>
+          )}
+          <span className="brand-name">{brand.companyName}</span>
         </a>
         <div className="nav-caption">SEU CONSULTÓRIO, ONDE ESTIVER</div>
         <nav aria-label="Menu principal">
-          {nav.map(([key, label, Icon]) => (
-            <button
-              key={key}
-              className={
-                page === key ||
-                (key === "patients" &&
-                  ["patient", "consultation", "prescription"].includes(page)) ||
-                (key === "agenda" && page === "visit")
-                  ? "nav-item active"
-                  : "nav-item"
-              }
-              onClick={() => go(key)}
-            >
-              <Icon size={20} />
-              <span>{label}</span>
-            </button>
-          ))}
+          {nav
+            .filter(([key]) =>
+              key === "finance"
+                ? allowed("finance.read")
+                : key === "settings"
+                  ? allowed("settings.write")
+                  : key === "iam"
+                    ? allowed("iam.manage")
+                    : key === "products"
+                      ? allowed("products.write")
+                      : key === "pending"
+                        ? clinical
+                        : true,
+            )
+            .map(([key, label, Icon]) => (
+              <button
+                key={key}
+                className={
+                  page === key ||
+                  (key === "patients" &&
+                    ["patient", "consultation", "prescription"].includes(
+                      page,
+                    )) ||
+                  (key === "agenda" && page === "visit")
+                    ? "nav-item active"
+                    : "nav-item"
+                }
+                onClick={() => go(key)}
+              >
+                <Icon size={20} />
+                <span>{label}</span>
+              </button>
+            ))}
         </nav>
         <div className="sidebar-footer">
+          <button onClick={() => go("account")}>Minha conta</button>
           <label className="theme-control">
             <SunMoon size={18} />
             <select
@@ -242,7 +298,10 @@ export default function Workspace() {
             </select>
           </label>
           <span className="local-label">
-            <i /> Ambiente local
+            <i />{" "}
+            {data?.identity?.local
+              ? "Desenvolvimento local"
+              : "Acesso autenticado"}
           </span>
         </div>
       </aside>
@@ -273,120 +332,14 @@ export default function Workspace() {
                   "Visitas domiciliares, com tempo para cada paciente.",
                   add("Agendar visita", () => setModal({ kind: "schedule" })),
                 )}
-                <div className="toolbar">
-                  <div className="row">
-                    <button
-                      aria-label="Dia anterior"
-                      onClick={() => setDay(shiftDay(day, -1))}
-                    >
-                      ←
-                    </button>
-                    <input
-                      aria-label="Dia da agenda"
-                      type="date"
-                      value={day}
-                      onChange={(e) => setDay(e.target.value)}
-                    />
-                    <button
-                      aria-label="Próximo dia"
-                      onClick={() => setDay(shiftDay(day, 1))}
-                    >
-                      →
-                    </button>
-                    <button onClick={() => setDay(dateKey())}>Hoje</button>
-                  </div>
-                  <span className="muted">Horário de Brasília</span>
-                </div>
-                <div className="stats">
-                  <Stat
-                    label="Visitas do dia"
-                    value={String(
-                      data.visits.filter(
-                        (v) =>
-                          dateKey(v.startsAt) === day &&
-                          v.status !== "cancelled",
-                      ).length,
-                    )}
-                  />
-                  <Stat
-                    label="Pacientes previstos"
-                    value={String(
-                      data.visitPatients.filter((vp) =>
-                        data.visits.some(
-                          (v) =>
-                            v.id === vp.visitId &&
-                            dateKey(v.startsAt) === day &&
-                            v.status !== "cancelled",
-                        ),
-                      ).length,
-                    )}
-                  />
-                  <Stat
-                    label="A receber no dia"
-                    value={money(
-                      data.visits
-                        .filter(
-                          (v) =>
-                            dateKey(v.startsAt) === day &&
-                            v.status !== "cancelled",
-                        )
-                        .reduce(
-                          (s, v) => s + v.totalCents - v.receivedCents,
-                          0,
-                        ),
-                    )}
-                  />
-                </div>
-                <section className="panel">
-                  <div className="section-heading">
-                    <h2>{dateLabel(day)}</h2>
-                    <span className="badge">Visão diária</span>
-                  </div>
-                  <div className="visit-list">
-                    {data.visits
-                      .filter((v) => dateKey(v.startsAt) === day)
-                      .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
-                      .map((v) => (
-                        <button
-                          className="visit-card"
-                          key={v.id}
-                          onClick={() => go("visit", v.id)}
-                        >
-                          <div className="visit-time">
-                            <strong>{timeLabel(v.startsAt)}</strong>
-                            <span>{v.durationMinutes} min</span>
-                          </div>
-                          <div className="visit-copy">
-                            <div className="row">
-                              <h3>{tutorName(v.tutorId)}</h3>
-                              <span className="badge">
-                                {statusLabel[v.status]}
-                              </span>
-                            </div>
-                            <p>
-                              {data.visitPatients
-                                .filter((x) => x.visitId === v.id)
-                                .map(
-                                  (x) =>
-                                    data.patients.find(
-                                      (p) => p.id === x.patientId,
-                                    )?.name,
-                                )
-                                .join(" · ")}
-                            </p>
-                            <span className="muted">
-                              <MapPin size={14} />
-                              {v.address}
-                            </span>
-                          </div>
-                          <ChevronRight size={20} />
-                        </button>
-                      ))}
-                    {!data.visits.some((v) => dateKey(v.startsAt) === day) && (
-                      <Empty text="Seu dia está livre. Agende a primeira visita." />
-                    )}
-                  </div>
-                </section>
+                <Agenda
+                  data={data}
+                  day={day}
+                  view={agendaView}
+                  onDay={setDay}
+                  onView={setAgendaView}
+                  onVisit={(id) => go("visit", id)}
+                />
               </>
             )}
             {page === "visit" && visit && (
@@ -446,7 +399,9 @@ export default function Workspace() {
                                 )}
                               </div>
                               <button
-                                disabled={visit.status === "cancelled"}
+                                disabled={
+                                  visit.status === "cancelled" || !clinical
+                                }
                                 onClick={() =>
                                   c
                                     ? go("consultation", c.id)
@@ -609,8 +564,12 @@ export default function Workspace() {
                 <div className="detail-grid">
                   <section className="panel">
                     <div className="section-heading">
-                      <h2>Timeline do paciente</h2>
-                      <div className="row wrap">
+                      <h2>
+                        {clinical
+                          ? "Timeline do paciente"
+                          : "Histórico clínico restrito"}
+                      </h2>
+                      <div className="row wrap" hidden={!clinical}>
                         <button
                           onClick={() =>
                             setModal({ kind: "exam", patientId: patient.id })
@@ -692,7 +651,7 @@ export default function Workspace() {
                 </div>
               </>
             )}
-            {page === "consultation" && consult && (
+            {page === "consultation" && consult && clinical && (
               <Encounter
                 key={consult.id}
                 consultation={consult}
@@ -833,6 +792,54 @@ export default function Workspace() {
                 </p>
               </>
             )}
+            {page === "iam" && data.identity && allowed("iam.manage") && (
+              <>
+                {heading(
+                  "Usuários e acessos",
+                  "Gerencie quem pode acessar esta clínica.",
+                )}
+                <Iam identity={data.identity} />
+              </>
+            )}
+            {page === "account" && data.identity && (
+              <>
+                {heading(
+                  "Minha conta",
+                  "Gerencie seu acesso e seus dispositivos.",
+                )}
+                <MyAccount identity={data.identity} />
+              </>
+            )}
+            {page === "finance" && allowed("finance.read") && (
+              <>
+                {heading(
+                  "Financeiro",
+                  "Acompanhe receitas, custos e despesas do seu atendimento.",
+                )}
+                <Finance
+                  data={data}
+                  mutate={mutate}
+                  openVisit={(id) => go("visit", id)}
+                />
+              </>
+            )}
+            {page === "settings" && allowed("settings.write") && (
+              <>
+                {heading(
+                  "Configurações",
+                  "Identidade da empresa e dados da veterinária.",
+                )}
+                <Settings
+                  key={brand.revision}
+                  settings={brand}
+                  guardRef={guardRef}
+                  onSaved={async () => {
+                    await refresh();
+                    setToast("Configurações salvas");
+                  }}
+                />
+              </>
+            )}
             {page === "pending" && (
               <>
                 {heading("Pendências", "Retome o que precisa da sua atenção.")}
@@ -862,7 +869,7 @@ export default function Workspace() {
                     )}
                   </section>
                   <section className="panel">
-                    <h2>Exames aguardRefando resultado</h2>
+                    <h2>Exames aguardando resultado</h2>
                     {data.exams
                       .filter(
                         (e) =>
@@ -881,17 +888,25 @@ export default function Workspace() {
                               · {dateLabel(e.occurredOn)}
                             </p>
                           </div>
-                          <button
-                            onClick={() =>
-                              setModal({
-                                kind: "exam",
-                                patientId: e.patientId,
-                                requestId: e.id,
-                              })
-                            }
-                          >
-                            Anexar resultado
-                          </button>
+                          <div className="row wrap">
+                            <a
+                              className="button-link"
+                              href={`/api/exams/${e.id}/pdf`}
+                            >
+                              Baixar solicitação PDF
+                            </a>
+                            <button
+                              onClick={() =>
+                                setModal({
+                                  kind: "exam",
+                                  patientId: e.patientId,
+                                  requestId: e.id,
+                                })
+                              }
+                            >
+                              Anexar resultado
+                            </button>
+                          </div>
                         </div>
                       ))}
                   </section>
@@ -930,7 +945,7 @@ export default function Workspace() {
           </>
         )}
         <footer className="page-footer">
-          AR Saúde Animal · Primeira versão local · Os cadastros iniciais
+          {brand.companyName} · Primeira versão local · Os cadastros iniciais
           marcados como exemplo são fictícios.
         </footer>
       </main>
@@ -1049,25 +1064,12 @@ export default function Workspace() {
     </div>
   );
 }
-function shiftDay(day: string, n: number) {
-  const d = new Date(day + "T12:00:00-03:00");
-  d.setDate(d.getDate() + n);
-  return dateKey(d);
-}
 function Back({ onClick }: { onClick: () => void }) {
   return (
     <button className="link-button back" onClick={onClick}>
       <ArrowLeft size={16} />
       Voltar
     </button>
-  );
-}
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stat">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 function Empty({ text }: { text: string }) {
@@ -1243,6 +1245,11 @@ function TimelinePost({
           <p className="hint">
             {exam.mode} {exam.partner}
           </p>
+          {exam.kind === "order" && (
+            <a className="button-link" href={`/api/exams/${exam.id}/pdf`}>
+              Baixar solicitação PDF
+            </a>
+          )}
           {exam.attachmentId && (
             <a
               className="text-link"
@@ -1520,6 +1527,11 @@ function Encounter({
                   <span>
                     {e.kind === "order" ? "Pedido" : "Resultado"} · {e.name}
                   </span>
+                  {e.kind === "order" && (
+                    <a className="button-link" href={`/api/exams/${e.id}/pdf`}>
+                      Baixar solicitação PDF
+                    </a>
+                  )}
                   {e.attachmentId ? (
                     <a
                       className="text-link"
@@ -1531,7 +1543,7 @@ function Encounter({
                     <span className="badge">
                       {data.exams.some((r) => r.requestId === e.id)
                         ? "Resultado recebido"
-                        : "AguardRefando resultado"}
+                        : "Aguardando resultado"}
                     </span>
                   )}
                 </div>

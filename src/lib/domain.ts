@@ -1,3 +1,4 @@
+import { expenseSchema } from "./finance-schema";
 import { z } from "zod";
 export const ORG_ID = process.env.APP_ORG_ID || "ar-saude-animal";
 export const units = ["mL", "dose", "unidade", "comprimido", "g"] as const;
@@ -125,6 +126,22 @@ export const rxItemSchema = z
   })
   .strict();
 export const commandSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("expense.create"), data: expenseSchema }).strict(),
+  z
+    .object({
+      type: z.literal("expense.update"),
+      id,
+      revision: z.number().int().min(0),
+      data: expenseSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("expense.void"),
+      id,
+      revision: z.number().int().min(0),
+    })
+    .strict(),
   z
     .object({
       type: z.literal("tutor.create"),

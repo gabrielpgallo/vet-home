@@ -17,7 +17,7 @@ O tutor paga por visita, no momento ou posteriormente, podendo pagar parcialment
 1. Validar esta primeira implementação com a veterinária usando somente exemplos: navegação, atendimento, campos da receita e cobrança.
 2. Implementar login, sessão e organização vinculada à identidade; publicar um ambiente seguro para tablet e celular.
 3. Preparar backup automático e teste de recuperação antes de dados reais.
-4. Refinar agenda com remarcação, visão semanal e edição do motivo/duração conforme o uso observado.
+4. Refinar agenda com remarcação e edição do motivo/duração conforme o uso observado.
 5. Completar dados profissionais e tutores, modelos de documentos e integração de assinatura digital.
 6. Acrescentar paginação, busca no servidor e estratégia de rascunhos/offline para visitas com conexão instável.
 

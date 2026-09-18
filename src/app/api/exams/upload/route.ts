@@ -1,15 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { getOrgId } from "@/server/context";
+import { NextResponse } from "next/server";
 import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
-import { uploadSchema, ORG_ID } from "@/lib/domain";
+import { uploadSchema } from "@/lib/domain";
 import { forOrg, AppError } from "@/server/db";
 import { checkPatientConsultation, event } from "@/server/commands";
-import { requireLocalAccess } from "@/server/access";
+import { withAccess } from "@/server/access";
 import { apiError } from "@/server/http";
 export const runtime = "nodejs";
-export async function POST(req: NextRequest) {
+async function handlePOST(req: Request) {
   try {
-    await requireLocalAccess(true);
     if (Number(req.headers.get("content-length") || 0) > 16 * 1024 * 1024)
       throw new AppError("O limite é de 15 MB por resultado.", 413);
     const form = await req.formData(),
@@ -31,13 +31,13 @@ export async function POST(req: NextRequest) {
     const result = await forOrg(async (db) => {
       const lock = await db.query(
         "INSERT INTO mutations(organization_id,id,request_hash) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING id",
-        [ORG_ID, requestId, hash],
+        [getOrgId(), requestId, hash],
       );
       if (!lock.rowCount) {
         const old = (
           await db.query(
             "SELECT * FROM mutations WHERE organization_id=$1 AND id=$2",
-            [ORG_ID, requestId],
+            [getOrgId(), requestId],
           )
         ).rows[0];
         if (old.request_hash !== hash)
@@ -64,13 +64,19 @@ export async function POST(req: NextRequest) {
         id = randomUUID();
       await db.query(
         "INSERT INTO attachments(id,organization_id,name,mime,data,size) VALUES($1,$2,$3,'application/pdf',$4,$5)",
-        [attachmentId, ORG_ID, file.name.slice(0, 255), buffer, buffer.length],
+        [
+          attachmentId,
+          getOrgId(),
+          file.name.slice(0, 255),
+          buffer,
+          buffer.length,
+        ],
       );
       await db.query(
         "INSERT INTO exams(id,organization_id,patient_id,consultation_id,request_id,kind,name,notes,attachment_id,occurred_on) VALUES($1,$2,$3,$4,$5,'result',$6,$7,$8,$9)",
         [
           id,
-          ORG_ID,
+          getOrgId(),
           d.patientId,
           d.consultationId,
           d.requestId,
@@ -93,11 +99,11 @@ export async function POST(req: NextRequest) {
       const response = { id };
       await db.query(
         "UPDATE mutations SET response=$3 WHERE organization_id=$1 AND id=$2",
-        [ORG_ID, requestId, JSON.stringify(response)],
+        [getOrgId(), requestId, JSON.stringify(response)],
       );
       await db.query(
         "INSERT INTO audit_log(organization_id,action,entity_id) VALUES($1,'exam.upload',$2)",
-        [ORG_ID, id],
+        [getOrgId(), id],
       );
       return response;
     });
@@ -106,3 +112,5 @@ export async function POST(req: NextRequest) {
     return apiError(e);
   }
 }
+
+export const POST = withAccess("clinical.write", handlePOST);

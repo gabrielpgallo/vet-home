@@ -44,10 +44,12 @@ export function AsyncForm({
   children,
   onSubmit,
   submit = "Salvar",
+  secondarySubmit,
 }: {
   children: ReactNode;
-  onSubmit: (data: FormData) => Promise<void>;
+  onSubmit: (data: FormData, action: "primary" | "secondary") => Promise<void>;
   submit?: string;
+  secondarySubmit?: string;
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -58,7 +60,12 @@ export function AsyncForm({
     setError("");
     const d = new FormData(e.currentTarget);
     try {
-      await onSubmit(d);
+      const submitter = (e.nativeEvent as SubmitEvent)
+        .submitter as HTMLButtonElement | null;
+      await onSubmit(
+        d,
+        submitter?.value === "secondary" ? "secondary" : "primary",
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Não foi possível salvar.");
     } finally {
@@ -74,7 +81,18 @@ export function AsyncForm({
         </p>
       )}
       <div className="form-actions">
-        <button type="submit" className="primary" disabled={busy}>
+        {secondarySubmit && (
+          <button type="submit" name="action" value="secondary" disabled={busy}>
+            {secondarySubmit}
+          </button>
+        )}
+        <button
+          type="submit"
+          name="action"
+          value="primary"
+          className="primary"
+          disabled={busy}
+        >
           {busy ? "Salvando…" : submit}
         </button>
       </div>
@@ -221,7 +239,7 @@ export function PatientForm({
           value={patient?.birthDate?.slice(0, 10) || ""}
         />
       </div>
-      <label>
+      <label hidden={data.identity?.role === "assistant"}>
         Observações e alertas
         <textarea
           name="notes"
@@ -646,16 +664,17 @@ export function ExamForm({
   const uploadId = useRef(crypto.randomUUID());
   return (
     <AsyncForm
+      secondarySubmit={mode === "order" ? "Salvar" : undefined}
       submit={
         mode === "order"
-          ? "Solicitar exame"
+          ? "Salvar e gerar PDF"
           : mode === "result"
             ? "Anexar resultado"
             : "Vincular exame"
       }
-      onSubmit={async (d) => {
-        if (mode === "order")
-          await mutate({
+      onSubmit={async (d, action) => {
+        if (mode === "order") {
+          const result = await mutate({
             type: "exam.order",
             patientId,
             consultationId: consult || null,
@@ -667,7 +686,15 @@ export function ExamForm({
             notes: str(d, "notes"),
             date: str(d, "date"),
           });
-        else if (mode === "existing") {
+          if (action === "primary") {
+            const download = document.createElement("a");
+            download.href = `/api/exams/${result.id}/pdf`;
+            download.download = `solicitacao-exame-${result.id}.pdf`;
+            document.body.appendChild(download);
+            download.click();
+            download.remove();
+          }
+        } else if (mode === "existing") {
           if (!consult)
             throw Error("Selecione a consulta à qual deseja vincular o exame.");
           await mutate({

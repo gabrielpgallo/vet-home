@@ -1,9 +1,10 @@
+import { getOrgId, requestIdentity } from "@/server/context";
 import { randomUUID, createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import {
   commandSchema,
   applicationTotal,
-  ORG_ID,
+  dateKey,
   type Command,
 } from "@/lib/domain";
 import { forOrg, AppError } from "./db";
@@ -27,7 +28,7 @@ async function event(
     "INSERT INTO timeline(id,organization_id,patient_id,consultation_id,type,entity_id,title,text,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::timestamptz,now()))",
     [
       randomUUID(),
-      ORG_ID,
+      getOrgId(),
       patientId,
       consultationId,
       type,
@@ -67,13 +68,13 @@ export async function runCommand(input: unknown, requestId: string) {
     // Serializes duplicate requests and commits their response with the mutation itself.
     const lock = await db.query(
       "INSERT INTO mutations(organization_id,id,request_hash) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING id",
-      [ORG_ID, requestId, hash],
+      [getOrgId(), requestId, hash],
     );
     if (!lock.rowCount) {
       const previous = (
         await db.query(
           "SELECT * FROM mutations WHERE organization_id=$1 AND id=$2",
-          [ORG_ID, requestId],
+          [getOrgId(), requestId],
         )
       ).rows[0];
       if (previous.request_hash !== hash)
@@ -83,11 +84,11 @@ export async function runCommand(input: unknown, requestId: string) {
     const result = await execute(db, cmd);
     await db.query(
       "INSERT INTO audit_log(organization_id,action,entity_id) VALUES($1,$2,$3)",
-      [ORG_ID, cmd.type, result.id],
+      [getOrgId(), cmd.type, result.id],
     );
     await db.query(
       "UPDATE mutations SET response=$3 WHERE organization_id=$1 AND id=$2",
-      [ORG_ID, requestId, JSON.stringify(result)],
+      [getOrgId(), requestId, JSON.stringify(result)],
     );
     return result;
   });
@@ -98,17 +99,74 @@ async function execute(
   cmd: Command,
 ): Promise<{ id: string; revision?: number }> {
   switch (cmd.type) {
+    case "expense.create":
+    case "expense.update": {
+      const d = cmd.data;
+      if (d.paidOn && d.paidOn > dateKey())
+        throw new AppError("A data de pagamento não pode estar no futuro.");
+      if (d.visitId) await row(db, "visits", d.visitId);
+      const id = cmd.type === "expense.update" ? cmd.id : randomUUID();
+      if (cmd.type === "expense.update") {
+        const r = await db.query(
+          "UPDATE expenses SET description=$2,category=$3,amount_cents=$4,occurred_on=$5,paid_on=$6,visit_id=$7,notes=$8,revision=revision+1,updated_at=now() WHERE id=$1 AND revision=$9 AND status='active' RETURNING id",
+          [
+            id,
+            d.description,
+            d.category,
+            d.amountCents,
+            d.occurredOn,
+            d.paidOn,
+            d.visitId,
+            d.notes,
+            cmd.revision,
+          ],
+        );
+        if (!r.rowCount)
+          throw new AppError(
+            "A despesa mudou em outra aba ou foi excluída. Recarregue os dados.",
+            409,
+          );
+      } else
+        await db.query(
+          "INSERT INTO expenses(id,organization_id,description,category,amount_cents,occurred_on,paid_on,visit_id,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+          [
+            id,
+            getOrgId(),
+            d.description,
+            d.category,
+            d.amountCents,
+            d.occurredOn,
+            d.paidOn,
+            d.visitId,
+            d.notes,
+          ],
+        );
+      return { id };
+    }
+    case "expense.void": {
+      const r = await db.query(
+        "UPDATE expenses SET status='voided',revision=revision+1,updated_at=now() WHERE id=$1 AND revision=$2 AND status='active' RETURNING id",
+        [cmd.id, cmd.revision],
+      );
+      if (!r.rowCount)
+        throw new AppError(
+          "A despesa mudou em outra aba ou já foi excluída.",
+          409,
+        );
+      return { id: cmd.id };
+    }
+
     case "tutor.create": {
       const id = randomUUID(),
         d = cmd.data;
       await db.query(
         "INSERT INTO tutors(id,organization_id,name,phone,email,address) VALUES($1,$2,$3,$4,$5,$6)",
-        [id, ORG_ID, d.name, d.phone, d.email, d.address],
+        [id, getOrgId(), d.name, d.phone, d.email, d.address],
       );
       for (const name of cmd.patientNames)
         await db.query(
           "INSERT INTO patients(id,organization_id,tutor_id,name) VALUES($1,$2,$3,$4)",
-          [randomUUID(), ORG_ID, id, name],
+          [randomUUID(), getOrgId(), id, name],
         );
       return { id };
     }
@@ -133,22 +191,31 @@ async function execute(
         if (previous.tutor_id !== d.tutorId)
           throw new AppError("Troca de tutor ainda não está disponível.");
         await db.query(
-          "UPDATE patients SET name=$2,species=$3,breed=$4,sex=$5,birth_date=$6,notes=$7 WHERE id=$1",
-          [id, d.name, d.species, d.breed, d.sex, d.birthDate, d.notes],
-        );
-      } else
-        await db.query(
-          "INSERT INTO patients(id,organization_id,tutor_id,name,species,breed,sex,birth_date,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+          "UPDATE patients SET name=$2,species=$3,breed=$4,sex=$5,birth_date=$6,notes=CASE WHEN $8 THEN notes ELSE $7 END WHERE id=$1",
           [
             id,
-            ORG_ID,
-            d.tutorId,
             d.name,
             d.species,
             d.breed,
             d.sex,
             d.birthDate,
             d.notes,
+            requestIdentity.getStore()?.role === "assistant",
+          ],
+        );
+      } else
+        await db.query(
+          "INSERT INTO patients(id,organization_id,tutor_id,name,species,breed,sex,birth_date,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+          [
+            id,
+            getOrgId(),
+            d.tutorId,
+            d.name,
+            d.species,
+            d.breed,
+            d.sex,
+            d.birthDate,
+            requestIdentity.getStore()?.role === "assistant" ? "" : d.notes,
           ],
         );
       return { id };
@@ -166,7 +233,7 @@ async function execute(
       } else
         await db.query(
           "INSERT INTO products(id,organization_id,name,unit,cost_cents,sale_cents) VALUES($1,$2,$3,$4,$5,$6)",
-          [id, ORG_ID, d.name, d.unit, d.costCents, d.saleCents],
+          [id, getOrgId(), d.name, d.unit, d.costCents, d.saleCents],
         );
       return { id };
     }
@@ -184,7 +251,7 @@ async function execute(
         "INSERT INTO visits(id,organization_id,tutor_id,starts_at,duration_minutes,address,base_cents) VALUES($1,$2,$3,$4,$5,$6,$7)",
         [
           id,
-          ORG_ID,
+          getOrgId(),
           cmd.tutorId,
           cmd.date + "T" + cmd.time + ":00-03:00",
           cmd.duration,
@@ -195,7 +262,7 @@ async function execute(
       for (const patientId of ids)
         await db.query(
           "INSERT INTO visit_patients(organization_id,visit_id,patient_id,reason) VALUES($1,$2,$3,$4)",
-          [ORG_ID, id, patientId, cmd.reason],
+          [getOrgId(), id, patientId, cmd.reason],
         );
       return { id };
     }
@@ -243,7 +310,7 @@ async function execute(
       const id = randomUUID();
       await db.query(
         "INSERT INTO consultations(id,organization_id,visit_id,patient_id) VALUES($1,$2,$3,$4)",
-        [id, ORG_ID, cmd.visitId, cmd.patientId],
+        [id, getOrgId(), cmd.visitId, cmd.patientId],
       );
       await event(
         db,
@@ -308,7 +375,7 @@ async function execute(
         "INSERT INTO applications(id,organization_id,consultation_id,product_id,product_name,unit,quantity_milli,unit_cost_cents,unit_sale_cents,total_cents,batch,route) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
         [
           id,
-          ORG_ID,
+          getOrgId(),
           c.id,
           p.id,
           p.name,
@@ -329,7 +396,7 @@ async function execute(
         id = randomUUID();
       await db.query(
         "INSERT INTO prescriptions(id,organization_id,consultation_id,items,instructions) VALUES($1,$2,$3,$4,$5)",
-        [id, ORG_ID, c.id, JSON.stringify(cmd.items), cmd.instructions],
+        [id, getOrgId(), c.id, JSON.stringify(cmd.items), cmd.instructions],
       );
       await event(
         db,
@@ -348,7 +415,7 @@ async function execute(
         "INSERT INTO exams(id,organization_id,patient_id,consultation_id,kind,name,mode,partner,notes,occurred_on) VALUES($1,$2,$3,$4,'order',$5,$6,$7,$8,$9)",
         [
           id,
-          ORG_ID,
+          getOrgId(),
           cmd.patientId,
           cmd.consultationId,
           cmd.name,
@@ -377,7 +444,7 @@ async function execute(
         throw new AppError("O exame não pertence a este paciente.");
       await db.query(
         "INSERT INTO exam_links(organization_id,exam_id,consultation_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
-        [ORG_ID, e.id, c.id],
+        [getOrgId(), e.id, c.id],
       );
       return { id: e.id };
     }
@@ -386,7 +453,7 @@ async function execute(
       const id = randomUUID();
       await db.query(
         "INSERT INTO timeline(id,organization_id,patient_id,consultation_id,type,title,text) VALUES($1,$2,$3,$4,'note','Nota de acompanhamento',$5)",
-        [id, ORG_ID, cmd.patientId, cmd.consultationId, cmd.text],
+        [id, getOrgId(), cmd.patientId, cmd.consultationId, cmd.text],
       );
       return { id };
     }
@@ -407,7 +474,7 @@ async function execute(
       const id = randomUUID();
       await db.query(
         "INSERT INTO payments(id,organization_id,visit_id,amount_cents,method) VALUES($1,$2,$3,$4,$5)",
-        [id, ORG_ID, v.id, cmd.amountCents, cmd.method],
+        [id, getOrgId(), v.id, cmd.amountCents, cmd.method],
       );
       return { id };
     }

@@ -114,7 +114,23 @@ export interface Payment {
   method: string;
   createdAt: string;
 }
+export interface Expense {
+  id: string;
+  visitId: string | null;
+  description: string;
+  category: (typeof import("./finance-schema").expenseCategories)[number];
+  amountCents: number;
+  occurredOn: string;
+  paidOn: string | null;
+  notes: string;
+  revision: number;
+  status: "active" | "voided";
+  createdAt: string;
+}
 export interface Bootstrap {
+  identity?: import("./permissions").Identity;
+  expenses: Expense[];
+  settings: import("./settings").PracticeSettings;
   payments: Payment[];
   tutors: Tutor[];
   patients: Patient[];
