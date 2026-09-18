@@ -81,7 +81,7 @@ function LoginError({
   return error || callbackError ? (
     <p role="alert" className="notice">
       {error ||
-        "Não foi possível concluir o login. Use o e-mail convidado e tente novamente."}
+        "Não foi possível concluir o login. Tente novamente com a conta convidada. Se o erro continuar, entre em contato com o responsável pelo sistema."}
     </p>
   ) : null;
 }

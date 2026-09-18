@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { pool } from "./db";
 import { appUrl } from "../lib/app-url";
+import { authPolicyPool } from "./auth-policy";
 export function googleReady() {
   return !!(
     process.env.GOOGLE_CLIENT_ID &&
@@ -57,7 +58,7 @@ export const auth = betterAuth({
             throw new APIError("FORBIDDEN", {
               message: "Use um e-mail verificado pelo Google.",
             });
-          const invited = await pool.query(
+          const invited = await authPolicyPool.query(
             "SELECT 1 FROM iam_invitations WHERE lower(email)=lower($1) AND status='pending' AND expires_at>now()",
             [user.email],
           );
