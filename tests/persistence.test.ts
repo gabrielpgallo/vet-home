@@ -100,6 +100,29 @@ afterAll(async () => {
   await pool.end();
 });
 describe.sequential("persistência e regras do atendimento", () => {
+  it("persiste o documento do tutor, preserva em clientes antigos e permite limpar", async () => {
+    const data = { name: "Teste", phone: "", email: "", address: "Rua A" };
+    await execute({
+      type: "tutor.update",
+      id: tutor,
+      data: { ...data, document: "  000.000.000-00  " },
+    });
+    expect(
+      (await loadData()).tutors.find((t) => t.id === tutor)?.document,
+    ).toBe("000.000.000-00");
+    await execute({ type: "tutor.update", id: tutor, data });
+    expect(
+      (await loadData()).tutors.find((t) => t.id === tutor)?.document,
+    ).toBe("000.000.000-00");
+    await execute({
+      type: "tutor.update",
+      id: tutor,
+      data: { ...data, document: "" },
+    });
+    expect(
+      (await loadData()).tutors.find((t) => t.id === tutor)?.document,
+    ).toBe("");
+  });
   it("isola registros por organização e não retorna dados sem contexto", async () => {
     const scoped = await forOrg((db) => db.query("SELECT id FROM tutors"));
     expect(scoped.rows.map((r) => r.id)).toEqual([tutor]);

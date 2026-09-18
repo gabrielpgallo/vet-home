@@ -32,7 +32,7 @@ O resultado por visita desconta aplicações e despesas vinculadas com competên
 
 ### Demais funcionalidades
 
-- Configurações da empresa: nome, logo PNG/JPEG, veterinária responsável e CRMV; identificação aplicada à interface e aos PDFs.
+- Configurações da empresa: nome, logo PNG/JPEG, veterinária responsável, CRMV e MAPA/SIPEAGRO. Telefone, e-mail, CNPJ e CPF da veterinária são opcionais e aparecem nos documentos clínicos quando preenchidos. O cadastro do tutor também aceita CPF/CNPJ opcional.
 
 - Cadastro rápido de tutor com nome, endereço e nomes dos animais; edição posterior de tutor e paciente.
 - Agenda com visões de dia, semana e mês, navegação por período e totais correspondentes; horário exato, duração, endereço, motivo, tutor pesquisável e seleção dos animais da visita.
@@ -40,6 +40,7 @@ O resultado por visita desconta aplicações e despesas vinculadas com competên
 - Proteção contra sair com texto não salvo e contra sobrescrever uma edição feita em outra aba.
 - Catálogo com custo e venda por unidade; aplicação de quantidade fracionada, cálculo no servidor e preço preservado no histórico.
 - Receita com vários itens, revisão e download de **PDF de rascunho sem assinatura**.
+- Receitas e pedidos de exame usam cabeçalho com contatos, identificação compacta do paciente e tutor, paginação automática e rodapé com espaço em branco para assinatura externa. Idade calculada na data do documento; peso da consulta vinculada, quando disponível. O espaço reservado não assina o arquivo.
 - Pedido de exame com ações Salvar ou Salvar e gerar PDF (sem assinatura), e novo download pelo atendimento, timeline ou pendências, encaminhamento, anexação de resultado PDF de até 15 MB e vínculo de exame já existente a outra consulta do mesmo paciente.
 - Timeline de consultas, aplicações, receitas, exames e notas, preservando os vínculos sem duplicar eventos.
 - Cobrança por visita, recebimento parcial por Pix, dinheiro, crédito, débito ou link de pagamento, com histórico de recebimentos.

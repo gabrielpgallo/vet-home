@@ -7,7 +7,7 @@ export type PracticeBrand = PracticeSettings & { logo: Buffer | null };
 export async function readSettings(db: PoolClient): Promise<PracticeBrand> {
   const row = (
     await db.query(
-      "SELECT company_name,veterinarian_name,crmv,sipeagro,logo,revision FROM practice_settings WHERE organization_id=$1",
+      "SELECT company_name,veterinarian_name,veterinarian_title,crmv,sipeagro,phone,email,cnpj,veterinarian_cpf,logo,revision FROM practice_settings WHERE organization_id=$1",
       [getOrgId()],
     )
   ).rows[0];
@@ -15,8 +15,13 @@ export async function readSettings(db: PoolClient): Promise<PracticeBrand> {
     ? {
         companyName: row.company_name,
         veterinarianName: row.veterinarian_name,
+        veterinarianTitle: row.veterinarian_title,
         crmv: row.crmv,
         sipeagro: row.sipeagro,
+        phone: row.phone,
+        email: row.email,
+        cnpj: row.cnpj,
+        veterinarianCpf: row.veterinarian_cpf,
         hasLogo: !!row.logo,
         revision: row.revision,
         logo: row.logo,

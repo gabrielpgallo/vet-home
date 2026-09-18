@@ -116,6 +116,7 @@ export function TutorForm({
           phone: str(d, "phone"),
           email: str(d, "email"),
           address: str(d, "address"),
+          document: str(d, "document"),
         };
         const r = await mutate(
           tutor
@@ -136,6 +137,12 @@ export function TutorForm({
         <Field label="Nome do tutor" name="name" value={tutor?.name} required />
         <Field label="Telefone / WhatsApp" name="phone" value={tutor?.phone} />
         <Field label="E-mail" name="email" type="email" value={tutor?.email} />
+        <Field
+          label="CPF / CNPJ (opcional)"
+          name="document"
+          value={tutor?.document}
+          maxLength={30}
+        />
         <Field
           label="Endereço"
           name="address"

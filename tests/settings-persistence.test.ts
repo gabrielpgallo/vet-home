@@ -42,12 +42,17 @@ afterAll(async () => {
   await admin.end();
   await pool.end();
 });
-async function save(revision: number, sipeagro?: string) {
+async function save(
+  revision: number,
+  sipeagro?: string,
+  details: Record<string, string> = {},
+) {
   const form = new FormData();
   for (const key of ["companyName", "veterinarianName", "crmv"] as const)
     form.set(key, defaultSettings[key]);
   form.set("revision", String(revision));
   if (sipeagro !== undefined) form.set("sipeagro", sipeagro);
+  for (const [key, value] of Object.entries(details)) form.set(key, value);
   return requestIdentity.run(actor, () =>
     POST(
       new Request("http://localhost/api/settings", {
@@ -72,4 +77,51 @@ it("persists the registration, preserves it for old clients, checks revision and
   expect((await save(2, "x".repeat(61))).status).toBe(400);
   expect((await save(2, "")).status).toBe(200);
   expect((await brand()).sipeagro).toBe("");
+  const details = {
+    phone: "(16) 90000-0000",
+    email: "clinica@example.com",
+    cnpj: "00.000.000/0000-00",
+    veterinarianCpf: "000.000.000-00",
+  };
+  expect((await save(3, undefined, details)).status).toBe(200);
+  expect(await brand()).toMatchObject(details);
+  expect((await save(4)).status).toBe(200);
+  expect(await brand()).toMatchObject(details);
+  expect(
+    await requestIdentity.run({ ...actor, orgId: otherOrg }, loadBrand),
+  ).toMatchObject({ phone: "", email: "", cnpj: "", veterinarianCpf: "" });
+  expect((await save(5, undefined, { email: "invalid" })).status).toBe(400);
+  expect((await save(5, undefined, { phone: "x".repeat(61) })).status).toBe(
+    400,
+  );
+  expect(
+    (
+      await save(5, undefined, {
+        phone: "",
+        email: "",
+        cnpj: "",
+        veterinarianCpf: "",
+      })
+    ).status,
+  ).toBe(200);
+  expect(await brand()).toMatchObject({
+    phone: "",
+    email: "",
+    cnpj: "",
+    veterinarianCpf: "",
+  });
+  expect((await brand()).veterinarianTitle).toBe("Dra.");
+  expect((await save(6, undefined, { veterinarianTitle: "Dr." })).status).toBe(
+    200,
+  );
+  expect((await brand()).veterinarianTitle).toBe("Dr.");
+  expect((await save(7)).status).toBe(200);
+  expect((await brand()).veterinarianTitle).toBe("Dr.");
+  expect(
+    (await save(8, undefined, { veterinarianTitle: "invalid" })).status,
+  ).toBe(400);
+  expect((await save(8, undefined, { veterinarianTitle: "Dra." })).status).toBe(
+    200,
+  );
+  expect((await brand()).veterinarianTitle).toBe("Dra.");
 });

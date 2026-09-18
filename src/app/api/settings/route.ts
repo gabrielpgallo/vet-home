@@ -14,8 +14,13 @@ async function handlePOST(req: Request) {
     const data = settingsSchema.parse({
       companyName: form.get("companyName"),
       veterinarianName: form.get("veterinarianName"),
+      veterinarianTitle: form.get("veterinarianTitle") ?? undefined,
       crmv: form.get("crmv"),
       sipeagro: form.get("sipeagro") ?? undefined,
+      phone: form.get("phone") ?? undefined,
+      email: form.get("email") ?? undefined,
+      cnpj: form.get("cnpj") ?? undefined,
+      veterinarianCpf: form.get("veterinarianCpf") ?? undefined,
       revision: Number(form.get("revision")),
     });
     const file = form.get("logo"),
@@ -28,7 +33,11 @@ async function handlePOST(req: Request) {
       throw new AppError("Escolha remover ou substituir o logo.");
     const revision = await forOrg(async (db) => {
       const result = await db.query(
-        `INSERT INTO practice_settings(organization_id,company_name,veterinarian_name,crmv,logo,revision,sipeagro) VALUES($1,$2,$3,$4,$5,1,COALESCE($8::text,'')) ON CONFLICT(organization_id) DO UPDATE SET company_name=EXCLUDED.company_name,veterinarian_name=EXCLUDED.veterinarian_name,crmv=EXCLUDED.crmv,sipeagro=COALESCE($8::text,practice_settings.sipeagro),logo=CASE WHEN $6 THEN NULL WHEN $5::bytea IS NOT NULL THEN $5 ELSE practice_settings.logo END,revision=practice_settings.revision+1,updated_at=now() WHERE practice_settings.revision=$7 RETURNING revision`,
+        `INSERT INTO practice_settings(organization_id,company_name,veterinarian_name,crmv,logo,revision,sipeagro,phone,email,cnpj,veterinarian_cpf,veterinarian_title)
+         VALUES($1,$2,$3,$4,$5,1,COALESCE($8::text,''),COALESCE($9::text,''),COALESCE($10::text,''),COALESCE($11::text,''),COALESCE($12::text,''),COALESCE($13::text,'Dra.'))
+         ON CONFLICT(organization_id) DO UPDATE SET company_name=EXCLUDED.company_name,veterinarian_name=EXCLUDED.veterinarian_name,crmv=EXCLUDED.crmv,
+         sipeagro=COALESCE($8::text,practice_settings.sipeagro),phone=COALESCE($9::text,practice_settings.phone),email=COALESCE($10::text,practice_settings.email),cnpj=COALESCE($11::text,practice_settings.cnpj),veterinarian_cpf=COALESCE($12::text,practice_settings.veterinarian_cpf),
+         veterinarian_title=COALESCE($13::text,practice_settings.veterinarian_title),logo=CASE WHEN $6 THEN NULL WHEN $5::bytea IS NOT NULL THEN $5 ELSE practice_settings.logo END,revision=practice_settings.revision+1,updated_at=now() WHERE practice_settings.revision=$7 RETURNING revision`,
         [
           getOrgId(),
           data.companyName,
@@ -38,6 +47,11 @@ async function handlePOST(req: Request) {
           remove,
           data.revision,
           data.sipeagro ?? null,
+          data.phone ?? null,
+          data.email ?? null,
+          data.cnpj ?? null,
+          data.veterinarianCpf ?? null,
+          data.veterinarianTitle ?? null,
         ],
       );
       if (!result.rowCount)

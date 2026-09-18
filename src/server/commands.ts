@@ -160,8 +160,8 @@ async function execute(
       const id = randomUUID(),
         d = cmd.data;
       await db.query(
-        "INSERT INTO tutors(id,organization_id,name,phone,email,address) VALUES($1,$2,$3,$4,$5,$6)",
-        [id, getOrgId(), d.name, d.phone, d.email, d.address],
+        "INSERT INTO tutors(id,organization_id,name,phone,email,address,document) VALUES($1,$2,$3,$4,$5,$6,$7)",
+        [id, getOrgId(), d.name, d.phone, d.email, d.address, d.document ?? ""],
       );
       for (const name of cmd.patientNames)
         await db.query(
@@ -174,8 +174,8 @@ async function execute(
       await row(db, "tutors", cmd.id);
       const d = cmd.data;
       await db.query(
-        "UPDATE tutors SET name=$2,phone=$3,email=$4,address=$5 WHERE id=$1",
-        [cmd.id, d.name, d.phone, d.email, d.address],
+        "UPDATE tutors SET name=$2,phone=$3,email=$4,address=$5,document=COALESCE($6::text,document) WHERE id=$1",
+        [cmd.id, d.name, d.phone, d.email, d.address, d.document ?? null],
       );
       return { id: cmd.id };
     }

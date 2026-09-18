@@ -18,7 +18,16 @@ export function Settings({
       settings.veterinarianName,
     ),
     [crmv, setCrmv] = useState(settings.crmv),
+    [veterinarianTitle, setVeterinarianTitle] = useState(
+      settings.veterinarianTitle,
+    ),
     [sipeagro, setSipeagro] = useState(settings.sipeagro || ""),
+    [details, setDetails] = useState({
+      phone: settings.phone || "",
+      email: settings.email || "",
+      cnpj: settings.cnpj || "",
+      veterinarianCpf: settings.veterinarianCpf || "",
+    }),
     [logo, setLogo] = useState<File | null>(null),
     [preview, setPreview] = useState(""),
     [remove, setRemove] = useState(false),
@@ -27,8 +36,12 @@ export function Settings({
   const dirty =
     companyName !== settings.companyName ||
     veterinarianName !== settings.veterinarianName ||
+    veterinarianTitle !== settings.veterinarianTitle ||
     crmv !== settings.crmv ||
     sipeagro !== (settings.sipeagro || "") ||
+    (Object.keys(details) as (keyof typeof details)[]).some(
+      (key) => details[key] !== (settings[key] || ""),
+    ) ||
     !!logo ||
     remove;
   useEffect(() => {
@@ -65,8 +78,11 @@ export function Settings({
         const body = new FormData();
         body.set("companyName", companyName);
         body.set("veterinarianName", veterinarianName);
+        body.set("veterinarianTitle", veterinarianTitle);
         body.set("crmv", crmv);
         body.set("sipeagro", sipeagro);
+        for (const [key, value] of Object.entries(details))
+          body.set(key, value);
         body.set("revision", String(settings.revision));
         body.set("removeLogo", String(remove));
         if (logo) body.set("logo", logo);
@@ -160,6 +176,29 @@ export function Settings({
               )}
             </div>
           </div>
+          {(
+            [
+              ["phone", "Telefone / WhatsApp", 60],
+              ["email", "E-mail", 150],
+              ["cnpj", "CNPJ", 30],
+            ] as const
+          ).map(([key, label, limit]) => (
+            <label key={key}>
+              {label} (opcional)
+              <input
+                type={key === "email" ? "email" : "text"}
+                value={details[key]}
+                maxLength={limit}
+                onChange={(e) =>
+                  setDetails({ ...details, [key]: e.target.value })
+                }
+              />
+            </label>
+          ))}
+          <p className="hint">
+            Quando preenchidos, estes dados aparecem no cabeçalho das receitas e
+            pedidos de exame.
+          </p>
           {error && (
             <p className="error" role="alert">
               {error}
@@ -168,13 +207,25 @@ export function Settings({
         </section>
         <section className="panel stack">
           <div>
-            <h2>Veterinária responsável</h2>
+            <h2>Profissional responsável</h2>
             <p className="muted">
               Dados usados nas receitas e solicitações de exame.
             </p>
           </div>
           <label>
-            Nome da veterinária
+            Tratamento
+            <select
+              value={veterinarianTitle}
+              onChange={(e) =>
+                setVeterinarianTitle(e.target.value as "Dra." | "Dr.")
+              }
+            >
+              <option value="Dra.">Dra. — Médica veterinária</option>
+              <option value="Dr.">Dr. — Médico veterinário</option>
+            </select>
+          </label>
+          <label>
+            Nome do profissional
             <input
               value={veterinarianName}
               onChange={(e) => setVeterinarianName(e.target.value)}
@@ -210,6 +261,16 @@ export function Settings({
             Os dados profissionais identificam a responsável. A assinatura
             digital ainda não está integrada.
           </p>
+          <label>
+            CPF do profissional (opcional)
+            <input
+              value={details.veterinarianCpf}
+              maxLength={20}
+              onChange={(e) =>
+                setDetails({ ...details, veterinarianCpf: e.target.value })
+              }
+            />
+          </label>
         </section>
       </div>
     </AsyncForm>

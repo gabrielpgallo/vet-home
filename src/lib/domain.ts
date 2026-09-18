@@ -92,6 +92,7 @@ export const tutorSchema = z
     phone: short,
     email: z.union([z.literal(""), z.email()]),
     address: z.string().trim().min(1).max(500),
+    document: z.string().trim().max(30).optional(),
   })
   .strict();
 export const patientSchema = z

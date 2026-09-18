@@ -19,7 +19,7 @@ async function handleGET(
       async (db) =>
         (
           await db.query(
-            `SELECT e.*,to_char(e.occurred_on,'YYYY-MM-DD') AS request_date,to_char(p.birth_date,'YYYY-MM-DD') AS birth_date_text,p.name AS patient,p.species,p.breed,p.sex,p.birth_date,t.name AS tutor,t.phone,t.address,v.starts_at AS consultation_date FROM exams e JOIN patients p ON p.id=e.patient_id JOIN tutors t ON t.id=p.tutor_id LEFT JOIN consultations c ON c.id=e.consultation_id LEFT JOIN visits v ON v.id=c.visit_id WHERE e.id=$1 AND e.kind='order'`,
+            `SELECT e.*,to_char(e.occurred_on,'YYYY-MM-DD') AS request_date,to_char(p.birth_date,'YYYY-MM-DD') AS birth_date_text,p.name AS patient,p.species,p.breed,p.sex,p.birth_date,t.name AS tutor,t.phone,t.address,t.document,c.vitals->>'weight' AS weight,v.starts_at AS consultation_date FROM exams e JOIN patients p ON p.id=e.patient_id JOIN tutors t ON t.id=p.tutor_id LEFT JOIN consultations c ON c.id=e.consultation_id LEFT JOIN visits v ON v.id=c.visit_id WHERE e.id=$1 AND e.kind='order'`,
             [id],
           )
         ).rows[0],

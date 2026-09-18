@@ -1,4 +1,5 @@
 import type { PracticeBrand } from "./settings";
+import { veterinarianDisplayName } from "@/lib/settings";
 export function documentBrand(
   doc: PDFKit.PDFDocument,
   brand: PracticeBrand,
@@ -7,6 +8,7 @@ export function documentBrand(
   options: { showSipeagro?: boolean } = {},
 ) {
   const sipeagro = options.showSipeagro ? brand.sipeagro?.trim() : "";
+  const veterinarianName = veterinarianDisplayName(brand);
   const extraFooterHeight = sipeagro ? 13 : 0;
   const pages = doc.bufferedPageRange();
   for (let i = pages.start; i < pages.start + pages.count; i++) {
@@ -43,18 +45,13 @@ export function documentBrand(
     doc.font("Helvetica-Bold").fontSize(9).fillColor("#24334b");
     const nameSize = Math.min(
       9,
-      (9 * (doc.page.width - 96)) / doc.widthOfString(brand.veterinarianName),
+      (9 * (doc.page.width - 96)) / doc.widthOfString(veterinarianName),
     );
     doc
       .fontSize(nameSize)
-      .text(
-        brand.veterinarianName,
-        48,
-        doc.page.height - 79 - extraFooterHeight,
-        {
-          lineBreak: false,
-        },
-      );
+      .text(veterinarianName, 48, doc.page.height - 79 - extraFooterHeight, {
+        lineBreak: false,
+      });
     doc
       .font("Helvetica")
       .fontSize(8)

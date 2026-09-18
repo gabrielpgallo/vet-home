@@ -5,6 +5,7 @@ export interface Tutor {
   phone: string;
   email: string;
   address: string;
+  document?: string;
 }
 export interface Patient {
   id: string;
