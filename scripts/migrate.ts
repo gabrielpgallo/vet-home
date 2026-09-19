@@ -14,6 +14,7 @@ const appTables = [
   "applications",
   "prescriptions",
   "prescription_signatures",
+  "professional_profiles",
   "attachments",
   "exams",
   "exam_links",

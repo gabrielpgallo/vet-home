@@ -68,7 +68,7 @@ it("persists the registration, preserves it for old clients, checks revision and
   expect((await brand()).sipeagro).toBe("000123/SP");
   expect((await save(1)).status).toBe(200);
   expect((await brand()).sipeagro).toBe("000123/SP");
-  expect((await save(1, "overwrite")).status).toBe(409);
+  expect((await save(1, "000124/SP")).status).toBe(409);
   expect((await brand()).sipeagro).toBe("000123/SP");
   expect(
     (await requestIdentity.run({ ...actor, orgId: otherOrg }, loadBrand))
@@ -80,13 +80,23 @@ it("persists the registration, preserves it for old clients, checks revision and
   const details = {
     phone: "(16) 90000-0000",
     email: "clinica@example.com",
-    cnpj: "00.000.000/0000-00",
-    veterinarianCpf: "000.000.000-00",
+    cnpj: "11.222.333/0001-81",
+    veterinarianCpf: "111.444.777-35",
   };
   expect((await save(3, undefined, details)).status).toBe(200);
-  expect(await brand()).toMatchObject(details);
+  expect(await brand()).toMatchObject({
+    ...details,
+    phone: "16900000000",
+    cnpj: "11222333000181",
+    veterinarianCpf: "11144477735",
+  });
   expect((await save(4)).status).toBe(200);
-  expect(await brand()).toMatchObject(details);
+  expect(await brand()).toMatchObject({
+    ...details,
+    phone: "16900000000",
+    cnpj: "11222333000181",
+    veterinarianCpf: "11144477735",
+  });
   expect(
     await requestIdentity.run({ ...actor, orgId: otherOrg }, loadBrand),
   ).toMatchObject({ phone: "", email: "", cnpj: "", veterinarianCpf: "" });

@@ -101,7 +101,7 @@ export async function checkCertificate(
   const normalized = cpf.replace(/\D/g, "");
   if (!/^\d{11}$/.test(normalized))
     throw new AppError(
-      "Cadastre o CPF da veterinária nas Configurações antes de assinar.",
+      "Cadastre seu CPF em Configurações → Meu perfil veterinário e emita uma nova receita antes de assinar.",
     );
   const holderCpf = certificateCpf(certificate);
   if (!holderCpf)
@@ -110,7 +110,7 @@ export async function checkCertificate(
     );
   if (holderCpf !== normalized)
     throw new AppError(
-      "O CPF do certificado não corresponde ao da veterinária nas Configurações.",
+      "O CPF do certificado não corresponde ao do profissional registrado nesta receita.",
     );
   const leaf = parse(certificate);
   const usage = leaf.extensions?.find((e) => e.extnID === "2.5.29.15")

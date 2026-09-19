@@ -102,18 +102,32 @@ afterAll(async () => {
 describe.sequential("persistência e regras do atendimento", () => {
   it("persiste o documento do tutor, preserva em clientes antigos e permite limpar", async () => {
     const data = { name: "Teste", phone: "", email: "", address: "Rua A" };
+    await expect(
+      execute({
+        type: "tutor.update",
+        id: tutor,
+        data: { ...data, document: "11144477734" },
+      }),
+    ).rejects.toThrow("CPF ou CNPJ válido");
+    await expect(
+      execute({
+        type: "tutor.update",
+        id: tutor,
+        data: { ...data, phone: "9999" },
+      }),
+    ).rejects.toThrow("DDD");
     await execute({
       type: "tutor.update",
       id: tutor,
-      data: { ...data, document: "  000.000.000-00  " },
+      data: { ...data, document: "  111.444.777-35  " },
     });
     expect(
       (await loadData()).tutors.find((t) => t.id === tutor)?.document,
-    ).toBe("000.000.000-00");
+    ).toBe("11144477735");
     await execute({ type: "tutor.update", id: tutor, data });
     expect(
       (await loadData()).tutors.find((t) => t.id === tutor)?.document,
-    ).toBe("000.000.000-00");
+    ).toBe("11144477735");
     await execute({
       type: "tutor.update",
       id: tutor,

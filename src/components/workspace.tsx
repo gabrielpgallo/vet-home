@@ -1,9 +1,9 @@
 "use client";
-import { ReauthenticateLink } from "./reauthenticate";
+import { formatInput, phoneMatches } from "@/lib/input-formats";
 import { PrescriptionSignature } from "./prescription-signature";
 import { AuditLog } from "./audit";
 import { Iam, MyAccount } from "./iam";
-import { can, type Permission } from "@/lib/permissions";
+import { can, isVeterinarian, type Permission } from "@/lib/permissions";
 import Image from "next/image";
 import { Settings } from "./settings";
 import { AnamnesisAI } from "./anamnesis-ai";
@@ -270,7 +270,7 @@ export default function Workspace() {
               key === "finance"
                 ? allowed("finance.read")
                 : key === "settings"
-                  ? allowed("settings.write")
+                  ? allowed("settings.write") || allowed("profile.write")
                   : key === "audit"
                     ? allowed("audit.read")
                     : key === "iam"
@@ -344,15 +344,6 @@ export default function Workspace() {
           </div>
         ) : (
           <>
-            {data.identity && !data.identity.local && (
-              <details className="session-help">
-                <summary>Problemas com sua sessão?</summary>
-                <ReauthenticateLink userId={data.identity.userId} />
-                <a href="/access" target="_blank" rel="noopener noreferrer">
-                  Ver clínicas e convites em outra aba
-                </a>
-              </details>
-            )}
             {page === "agenda" && (
               <>
                 {heading(
@@ -726,12 +717,19 @@ export default function Workspace() {
                 {search}
                 <div className="panel">
                   {data.tutors
-                    .filter((t) => filtered(t.name + " " + t.phone))
+                    .filter(
+                      (t) =>
+                        filtered(t.name + " " + t.phone) ||
+                        phoneMatches(t.phone, query),
+                    )
                     .map((t) => (
                       <div className="record-row" key={t.id}>
                         <div>
                           <h3>{t.name}</h3>
-                          <p>{t.phone || "Telefone não informado"}</p>
+                          <p>
+                            {formatInput("phone", t.phone) ||
+                              "Telefone não informado"}
+                          </p>
                           <span className="muted">{t.address}</span>
                           <div className="row wrap">
                             {data.patients
@@ -835,7 +833,7 @@ export default function Workspace() {
                   "Usuários e acessos",
                   "Gerencie quem pode acessar esta clínica.",
                 )}
-                <Iam identity={data.identity} />
+                <Iam identity={data.identity} onChanged={refresh} />
               </>
             )}
             {page === "account" && data.identity && (
@@ -860,24 +858,26 @@ export default function Workspace() {
                 />
               </>
             )}
-            {page === "settings" && allowed("settings.write") && (
-              <>
-                {heading(
-                  "Configurações",
-                  "Identidade da empresa e dados da veterinária.",
-                )}
-                <Settings
-                  key={brand.revision}
-                  identity={data.identity!}
-                  settings={brand}
-                  guardRef={guardRef}
-                  onSaved={async () => {
-                    await refresh();
-                    setToast("Configurações salvas");
-                  }}
-                />
-              </>
-            )}
+            {page === "settings" &&
+              (allowed("settings.write") || allowed("profile.write")) && (
+                <>
+                  {heading(
+                    "Configurações",
+                    "Empresa, profissional responsável e inteligência artificial.",
+                  )}
+                  <Settings
+                    key={`${data.identity!.orgId}:${data.identity!.userId}`}
+                    identity={data.identity!}
+                    settings={brand}
+                    professionalProfile={data.professionalProfile}
+                    guardRef={guardRef}
+                    onSaved={async () => {
+                      await refresh();
+                      setToast("Configurações salvas");
+                    }}
+                  />
+                </>
+              )}
             {page === "pending" && (
               <>
                 {heading("Pendências", "Retome o que precisa da sua atenção.")}
@@ -1271,6 +1271,7 @@ function TimelinePost({
           <PrescriptionSignature
             id={rx.id}
             signedAt={rx.signedAt}
+            prescriberId={rx.prescriberId}
             identity={data.identity}
           />
         </>
@@ -1517,7 +1518,15 @@ function Encounter({
                 <strong>Aplicação</strong>
                 <span>Produto e quantidade</span>
               </button>
-              <button onClick={prescription}>
+              <button
+                onClick={prescription}
+                disabled={!isVeterinarian(data.identity)}
+                title={
+                  !isVeterinarian(data.identity)
+                    ? "Emissão exclusiva para veterinários habilitados"
+                    : undefined
+                }
+              >
                 <ClipboardList size={21} />
                 <strong>Receita</strong>
                 <span>Itens e orientações</span>
@@ -1551,6 +1560,7 @@ function Encounter({
                   <PrescriptionSignature
                     id={p.id}
                     signedAt={p.signedAt}
+                    prescriberId={p.prescriberId}
                     identity={data.identity}
                   />
                 </div>

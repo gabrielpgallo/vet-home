@@ -1,20 +1,29 @@
 "use client";
 import { useEffect, useState } from "react";
+import { ShieldCheck, ArrowUpRight } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 
 export function ReauthenticateLink({ userId }: { userId: string }) {
   return (
-    <p className="hint">
-      Ações sensíveis exigem confirmação da conta nos últimos 15 minutos.{" "}
+    <aside className="reauth-card" aria-label="Confirmação de segurança">
+      <ShieldCheck className="reauth-card-icon" size={20} aria-hidden="true" />
+      <div className="reauth-card-copy" role="status">
+        <strong>Confirme sua conta para salvar</strong>
+        <p>
+          Suas alterações estão preservadas. Confirme em outra aba e volte para
+          salvar.
+        </p>
+      </div>
       <a
+        className="reauth-card-action"
         href={`/confirmar-acesso?user=${encodeURIComponent(userId)}`}
         target="_blank"
         rel="noopener noreferrer"
       >
-        Confirmar conta Google
-      </a>{" "}
-      em outra aba, mantendo este formulário aberto.
-    </p>
+        Confirmar com Google
+        <ArrowUpRight size={16} aria-hidden="true" />
+      </a>
+    </aside>
   );
 }
 

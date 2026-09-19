@@ -769,9 +769,13 @@ fieldset:disabled textarea {
   align-items: center;
   gap: 10px;
 }
-.check-row input {
+.check-row input[type="checkbox"] {
+  flex: 0 0 18px;
   width: 18px;
+  height: 18px;
   min-height: 18px;
+  margin: 0;
+  padding: 0;
   accent-color: var(--primary);
 }
 .check-row .muted {
@@ -1871,6 +1875,10 @@ dialog.ai-drawer {
   gap: 20px;
   padding: 36px;
 }
+.login-shared-device {
+  min-height: 44px;
+  cursor: pointer;
+}
 .login-card h1 {
   font-size: 30px;
   line-height: 1.2;
@@ -2017,4 +2025,100 @@ dialog.ai-drawer {
   font-size: 11px;
   line-height: 1.5;
   max-width: 48ch;
+}
+
+.settings-sections {
+  display: grid;
+  gap: 24px;
+  max-width: 900px;
+}
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface2);
+}
+.settings-tabs button {
+  flex: 1;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+.settings-tabs button[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--primary);
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+.settings-tabs button svg {
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .settings-tabs {
+    flex-direction: column;
+  }
+  .settings-tabs button {
+    justify-content: flex-start;
+  }
+}
+
+.reauth-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface2);
+}
+.reauth-card-icon {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+.reauth-card-copy {
+  flex: 1;
+  min-width: 0;
+}
+.reauth-card-copy strong {
+  font-size: 13px;
+}
+.reauth-card-copy p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.reauth-card-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.reauth-card-action:hover {
+  border-color: var(--primary);
+  background: var(--accent);
+}
+@media (max-width: 640px) {
+  .reauth-card {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .reauth-card-copy {
+    flex-basis: calc(100% - 36px);
+  }
+  .reauth-card-action {
+    margin-left: 34px;
+  }
 }

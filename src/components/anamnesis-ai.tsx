@@ -177,7 +177,7 @@ export function AnamnesisAI({
             {!configured ? (
               <p className="notice">
                 Peça à administração para cadastrar a chave Gemini em
-                Configurações → IA para anamnese.
+                Configurações → Inteligência artificial.
               </p>
             ) : (
               <>

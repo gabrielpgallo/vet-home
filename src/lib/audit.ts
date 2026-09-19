@@ -17,6 +17,7 @@ export const auditEntities = {
   payments: "Recebimentos",
   expenses: "Despesas",
   practice_settings: "Configurações",
+  professional_profiles: "Perfis veterinários",
 } as const;
 export const auditOperations = {
   INSERT: "Criação",
@@ -37,6 +38,8 @@ export type AuditEntry = {
 };
 export const auditFields: Record<string, string> = {
   prescription_id: "Receita (ID)",
+  user_id: "Usuário (ID)",
+  prescriber_id: "Profissional emissor (ID)",
   attempt_id: "Solicitação de assinatura (ID)",
   signer_name: "Titular do certificado",
   fingerprint: "Impressão digital do certificado",

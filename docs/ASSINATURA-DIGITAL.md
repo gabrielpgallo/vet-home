@@ -1,8 +1,8 @@
 # Assinatura de receitas no dispositivo
 
-Em uma receita salva, escolha **Assinar no dispositivo**, selecione o PFX/P12 e
+Em uma receita salva, escolha **Assinar receita**, selecione o PFX/P12 e
 informe o PIN. Confira o PDF preparado e confirme a assinatura. É necessário
-cadastrar nas Configurações o CPF da veterinária titular do certificado.
+cadastrar em **Configurações → Meu perfil veterinário** o CPF pessoal do emissor antes de criar a receita. O certificado deve corresponder ao CPF registrado naquela receita.
 
 O fluxo inicial atende A1 RSA de 2048 a 4096 bits, com PFX que contenha a cadeia
 completa. Suporta contêineres AES e 3DES. Não suporta token/cartão, certificado
@@ -59,7 +59,7 @@ A auditoria guarda metadados (titular, hash, data), nunca PFX/PIN/PDF binário.
 
 ## Implantação e testes
 
-Migration 014 é aplicada pelo workflow de release antes do deploy. Não é preciso
+Migrations 014–016 são aplicadas pelo workflow de release antes do deploy. Não é preciso
 configurar novos secrets na Vercel. A preparação de PDF respeita limite de 4 MB;
 o request de retorno da assinatura é pequeno, sem upload de PDF/PFX.
 
@@ -71,3 +71,30 @@ O PDF de teste também foi verificado com pdfsig/Poppler e renderizado para revi
 O módulo de assinatura foi testado em navegador real com PFX 3DES fictício e Web Crypto.
 A homologação com o certificado real da Safeweb e no tablet da Isabelli depende
 de ela executar o fluxo localmente. Não compartilhar PFX nem PIN no chat.
+
+## Autoria e perfis profissionais
+
+A habilitação veterinária é independente do acesso administrativo. Em Usuários,
+marque **Também atua como veterinário** para administradores que exercem a profissão.
+O perfil de acesso Veterinária já inclui essa habilitação; assistentes não emitem.
+Cada conta habilitada preenche seu próprio nome, tratamento, CRMV, SIPEAGRO e CPF
+em **Configurações → Meu perfil veterinário**, para a clínica selecionada.
+O servidor vincula o perfil à sessão; não aceita escolher outro usuário no formulário.
+
+Receitas novas guardam o ID do emissor e uma cópia de seus dados profissionais.
+Editar o perfil depois não altera essa cópia. Apenas o emissor pode preparar e
+concluir a assinatura, e deve continuar habilitado como veterinário.
+Administradores sem habilitação podem consultar documentos, mas não emitir nem assinar.
+
+A migration preserva os dados profissionais anteriores das receitas existentes,
+sem deduzir a autoria a partir do responsável da clínica. PDFs assinados continuam
+inalterados. Para assinar uma receita antiga sem autor, emita uma nova receita.
+Não são copiados automaticamente os dados da clínica para contas de usuários.
+Esta mudança de autoria abrange receitas; pedidos de exame mantêm o fluxo anterior.
+
+## Login no ambiente local
+
+Use o endereço de BETTER_AUTH_URL. As páginas de entrada, confirmação e início
+redirecionam entre localhost e 127.0.0.1 para o host configurado, apenas no ambiente
+local e na mesma porta. Isso mantém cookies OAuth e callback na mesma origem,
+sem liberar origens adicionais. A proteção em produção permanece inalterada.

@@ -8,6 +8,10 @@ import {
   type Command,
 } from "@/lib/domain";
 import { forOrg, AppError } from "./db";
+import {
+  prescriptionAuthor,
+  requireVeterinarian,
+} from "./professional-profile";
 
 async function row(db: PoolClient, table: string, id: string) {
   const r = await db.query(`SELECT * FROM ${table} WHERE id=$1`, [id]);
@@ -64,6 +68,7 @@ async function checkPatientConsultation(
 export async function runCommand(input: unknown, requestId: string) {
   const cmd = commandSchema.parse(input),
     hash = createHash("sha256").update(JSON.stringify(cmd)).digest("hex");
+  if (cmd.type === "prescription.create") requireVeterinarian();
   return forOrg(async (db) => {
     // Serializes duplicate requests and commits their response with the mutation itself.
     const lock = await db.query(
@@ -394,9 +399,18 @@ async function execute(
     case "prescription.create": {
       const c = await consultation(db, cmd.consultationId),
         id = randomUUID();
+      const author = await prescriptionAuthor(db);
       await db.query(
-        "INSERT INTO prescriptions(id,organization_id,consultation_id,items,instructions) VALUES($1,$2,$3,$4,$5)",
-        [id, getOrgId(), c.id, JSON.stringify(cmd.items), cmd.instructions],
+        "INSERT INTO prescriptions(id,organization_id,consultation_id,items,instructions,prescriber_id,prescriber) VALUES($1,$2,$3,$4,$5,$6,$7)",
+        [
+          id,
+          getOrgId(),
+          c.id,
+          JSON.stringify(cmd.items),
+          cmd.instructions,
+          author.id,
+          JSON.stringify(author.snapshot),
+        ],
       );
       await event(
         db,

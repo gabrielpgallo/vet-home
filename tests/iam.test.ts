@@ -270,3 +270,66 @@ it("não permite remover simultaneamente todas as administradoras", async () => 
   );
   expect(Number(count.rows[0].count)).toBe(1);
 });
+
+it("separates veterinary qualification from administrative access", async () => {
+  await db.query(
+    "UPDATE iam_memberships SET role=CASE WHEN id=$1 THEN 'admin' ELSE 'assistant' END WHERE organization_id=$2",
+    [adminMember, org],
+  );
+  const row = (
+    await db.query("SELECT revision FROM iam_memberships WHERE id=$1", [
+      adminMember,
+    ])
+  ).rows[0];
+  await manageIam(
+    {
+      type: "membership",
+      id: adminMember,
+      role: "admin",
+      status: "active",
+      revision: row.revision,
+      isVeterinarian: true,
+    },
+    actor,
+  );
+  const member = (
+    await db.query(
+      "SELECT role,is_veterinarian,revision FROM iam_memberships WHERE id=$1",
+      [adminMember],
+    )
+  ).rows[0];
+  expect(member.role).toBe("admin");
+  expect(member.is_veterinarian).toBe(true);
+  await expect(
+    manageIam(
+      {
+        type: "membership",
+        id: adminMember,
+        role: "admin",
+        status: "active",
+        revision: member.revision,
+        isVeterinarian: false,
+      },
+      { ...actor, userId: otherUser },
+    ),
+  ).rejects.toThrow("administradora necessário");
+  await manageIam(
+    {
+      type: "membership",
+      id: adminMember,
+      role: "admin",
+      status: "active",
+      revision: member.revision,
+      isVeterinarian: false,
+    },
+    actor,
+  );
+  expect(
+    (
+      await db.query(
+        "SELECT is_veterinarian FROM iam_memberships WHERE id=$1",
+        [adminMember],
+      )
+    ).rows[0].is_veterinarian,
+  ).toBe(false);
+});

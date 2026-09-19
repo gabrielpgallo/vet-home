@@ -3,6 +3,10 @@ import { clinicalDocument, type ClinicalPatient } from "./clinical-document";
 import type { PracticeBrand } from "./settings";
 
 export interface PrescriptionDocument extends ClinicalPatient {
+  prescriber?: Omit<
+    import("@/lib/professional-profile").ProfessionalProfile,
+    "revision"
+  > | null;
   id: string;
   createdAt: string;
   items: RxItem[];
@@ -13,12 +17,16 @@ export async function createPrescriptionPdf(
   brand: PracticeBrand,
   forSigning = false,
 ) {
-  const pdf = clinicalDocument(rx, brand, {
-    kind: "prescription",
-    id: rx.id,
-    date: rx.createdAt,
-    forSigning,
-  });
+  const pdf = clinicalDocument(
+    rx,
+    { ...brand, ...rx.prescriber },
+    {
+      kind: "prescription",
+      id: rx.id,
+      date: rx.createdAt,
+      forSigning,
+    },
+  );
   pdf.section("Prescrição");
   rx.items.forEach((item, index) =>
     pdf.block(

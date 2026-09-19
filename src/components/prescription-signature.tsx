@@ -1,15 +1,17 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Download, ExternalLink, PenLine } from "lucide-react";
-import { can, type Identity } from "@/lib/permissions";
+import { isVeterinarian, type Identity } from "@/lib/permissions";
 import type { LocalSigner } from "@/lib/local-signature";
 export function PrescriptionSignature({
   id,
   signedAt,
+  prescriberId,
   identity,
 }: {
   id: string;
   signedAt?: string | null;
+  prescriberId?: string | null;
   identity?: Identity;
 }) {
   const [open, setOpen] = useState(false),
@@ -18,16 +20,19 @@ export function PrescriptionSignature({
   return (
     <div className="prescription-signature">
       <div className="prescription-signature-actions">
-        {!signed && identity && can(identity.role, "clinical.write") && (
-          <button
-            type="button"
-            className="prescription-signature-sign"
-            onClick={() => setOpen(true)}
-          >
-            <PenLine size={16} aria-hidden="true" />
-            Assinar receita
-          </button>
-        )}
+        {!signed &&
+          identity &&
+          isVeterinarian(identity) &&
+          prescriberId === identity.userId && (
+            <button
+              type="button"
+              className="prescription-signature-sign"
+              onClick={() => setOpen(true)}
+            >
+              <PenLine size={16} aria-hidden="true" />
+              Assinar receita
+            </button>
+          )}
         <a
           className="prescription-signature-download"
           href={`/api/prescriptions/${id}/pdf`}
@@ -241,8 +246,8 @@ function SigningDialog({
               />
             </label>
             <p className="hint">
-              O CPF do certificado deve ser o mesmo cadastrado nas Configurações
-              da clínica.
+              O CPF do certificado deve ser o do profissional que emitiu esta
+              receita.
             </p>
             <button className="primary" disabled={busy}>
               {busy ? "Abrindo certificado…" : "Preparar e revisar receita"}

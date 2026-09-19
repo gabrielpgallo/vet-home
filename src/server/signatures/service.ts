@@ -3,6 +3,10 @@ import { z } from "zod";
 import type { PoolClient } from "pg";
 import { requestIdentity, getOrgId } from "../context";
 import { AppError, forOrg } from "../db";
+import {
+  requireVeterinarian,
+  requirePrescriptionOwner,
+} from "../professional-profile";
 import { readSettings } from "../settings";
 import { createPrescriptionPdf } from "../prescription-pdf";
 import { checkCertificate, completePdf, preparePdf, sha256 } from "./crypto";
@@ -39,7 +43,7 @@ async function source(db: PoolClient, id: string) {
     "SELECT organization_id FROM practice_settings WHERE organization_id=$1 FOR SHARE",
     [getOrgId()],
   );
-  const brand = await readSettings(db);
+  const brand = { ...(await readSettings(db)), ...rx.prescriber };
   return {
     rx,
     brand,
@@ -47,6 +51,7 @@ async function source(db: PoolClient, id: string) {
   };
 }
 export async function preparePrescription(id: string, input: unknown) {
+  requireVeterinarian();
   const body = prepareSchema.parse(input);
   const certificate = Buffer.from(body.certificate, "base64"),
     chain = body.chain.map((c) => Buffer.from(c, "base64"));
@@ -54,6 +59,7 @@ export async function preparePrescription(id: string, input: unknown) {
   return forOrg(async (db) => {
     await db.query("SELECT id FROM prescriptions WHERE id=$1 FOR UPDATE", [id]);
     const data = await source(db, id);
+    requirePrescriptionOwner(data.rx);
     const info = await checkCertificate(
       certificate,
       chain,
@@ -106,6 +112,7 @@ export async function preparePrescription(id: string, input: unknown) {
   });
 }
 export async function finishPrescription(id: string, input: unknown) {
+  requireVeterinarian();
   const body = finishSchema.parse(input),
     actor = requestIdentity.getStore()!;
   return forOrg(async (db) => {
@@ -133,6 +140,7 @@ export async function finishPrescription(id: string, input: unknown) {
         409,
       );
     const data = await source(db, id);
+    requirePrescriptionOwner(data.rx);
     if (data.hash !== row.source_hash)
       throw new AppError(
         "Os dados da receita foram alterados. Reabra e revise o documento antes de assinar.",

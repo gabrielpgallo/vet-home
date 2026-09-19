@@ -1,3 +1,10 @@
+import {
+  cpfSchema,
+  crmvSchema,
+  sipeagroSchema,
+  phoneSchema,
+  cnpjSchema,
+} from "./input-formats";
 import { z } from "zod";
 import { DEFAULT_PRIMARY_COLOR, HEX_COLOR } from "./brand-color";
 export const defaultSettings = {
@@ -26,12 +33,12 @@ export const settingsSchema = z
       .optional(),
     veterinarianName: z.string().trim().min(1).max(120),
     veterinarianTitle: z.enum(["Dra.", "Dr."]).optional(),
-    crmv: z.string().trim().min(1).max(60),
-    sipeagro: z.string().trim().max(60).optional(),
-    phone: z.string().trim().max(60).optional(),
+    crmv: crmvSchema,
+    sipeagro: sipeagroSchema.optional(),
+    phone: phoneSchema.optional(),
     email: z.union([z.literal(""), z.email().max(150)]).optional(),
-    cnpj: z.string().trim().max(30).optional(),
-    veterinarianCpf: z.string().trim().max(20).optional(),
+    cnpj: cnpjSchema.optional(),
+    veterinarianCpf: cpfSchema.optional(),
     revision: z.number().int().min(0),
   })
   .strict();

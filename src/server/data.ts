@@ -1,3 +1,4 @@
+import { readProfessionalProfile } from "./professional-profile";
 import { readSettings } from "./settings";
 import { forOrg } from "./db";
 import type { Bootstrap } from "@/lib/types";
@@ -27,7 +28,10 @@ export async function loadData(): Promise<Bootstrap> {
     };
     const { logo, ...settings } = await readSettings(db);
     void logo;
-    const result: Record<string, unknown> = { settings };
+    const result: Record<string, unknown> = {
+      settings,
+      professionalProfile: await readProfessionalProfile(db),
+    };
     for (const [key, table] of Object.entries(tables))
       result[key] = camelRows((await db.query(`SELECT * FROM ${table}`)).rows);
     result.prescriptions = camelRows(

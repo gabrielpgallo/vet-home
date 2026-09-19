@@ -21,6 +21,11 @@ import {
   finishPrescription,
 } from "../src/server/signatures/service";
 import { createPrescriptionPdf } from "../src/server/prescription-pdf";
+import {
+  saveProfessionalProfile,
+  readProfessionalProfile,
+} from "../src/server/professional-profile";
+import { runCommand } from "../src/server/commands";
 import { defaultSettings } from "../src/lib/settings";
 import { requestIdentity } from "../src/server/context";
 import { forOrg, pool } from "../src/server/db";
@@ -39,6 +44,7 @@ const actor: Identity = {
   email: "test@example.com",
   orgId: org,
   role: "admin",
+  isVeterinarian: true,
   local: false,
 };
 const act = <T>(fn: () => Promise<T>) => requestIdentity.run(actor, fn);
@@ -74,7 +80,7 @@ beforeAll(async () => {
     [consult, org, visit, patient],
   );
   await admin.query(
-    "INSERT INTO prescriptions(id,organization_id,consultation_id,items) VALUES($1,$2,$3,$4)",
+    "INSERT INTO prescriptions(id,organization_id,consultation_id,items,prescriber_id,prescriber) VALUES($1,$2,$3,$4,$5,$6)",
     [
       rx,
       org,
@@ -91,11 +97,22 @@ beforeAll(async () => {
           instructions: "Documento de teste sem validade clinica",
         },
       ]),
+      user,
+      JSON.stringify({
+        veterinarianName: "Veterinaria Ficticia",
+        veterinarianTitle: "Dra.",
+        crmv: "TEST",
+        sipeagro: "",
+        veterinarianCpf: "11144477735",
+      }),
     ],
   );
 });
 afterAll(async () => {
   for (const table of [
+    "professional_profiles",
+    "mutations",
+    "timeline",
     "prescription_signatures",
     "prescriptions",
     "consultations",
@@ -277,4 +294,133 @@ it("rejects contradictory CPF fields and company certificates", () => {
       signingCertificate({ serialCpf: "11144477735", corporate: true }).leaf,
     ),
   ).toBe("");
+});
+
+it("rejects prescription creation by non-veterinary admins and assistants", async () => {
+  for (const role of ["admin", "assistant"] as const) {
+    await expect(
+      requestIdentity.run({ ...actor, role, isVeterinarian: false }, () =>
+        runCommand(
+          {
+            type: "prescription.create",
+            consultationId: consult,
+            items: [
+              {
+                name: "Test",
+                concentration: "Teste",
+                route: "Oral",
+                quantity: "1",
+                dose: "1",
+                frequency: "1",
+                duration: "1",
+                instructions: "",
+              },
+            ],
+            instructions: "",
+          },
+          randomUUID(),
+        ),
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+  }
+});
+it("binds professional settings and new prescriptions to the current user and freezes the snapshot", async () => {
+  const profile = {
+    veterinarianName: "Professional One",
+    veterinarianTitle: "Dra.",
+    crmv: "CRMV-SP 12345",
+    sipeagro: "",
+    veterinarianCpf: "11144477735",
+    revision: 0,
+  };
+  await act(() => saveProfessionalProfile(profile));
+  await expect(
+    act(() => saveProfessionalProfile(profile)),
+  ).rejects.toMatchObject({ status: 409 });
+  const command = {
+    type: "prescription.create",
+    consultationId: consult,
+    items: [
+      {
+        name: "Test",
+        concentration: "Teste",
+        route: "Oral",
+        quantity: "1",
+        dose: "1",
+        frequency: "1",
+        duration: "1",
+        instructions: "",
+      },
+    ],
+    instructions: "",
+  };
+  const created = await act(() => runCommand(command, randomUUID()));
+  await act(() =>
+    saveProfessionalProfile({
+      ...profile,
+      veterinarianName: "Updated Name",
+      revision: 1,
+    }),
+  );
+  const row = (
+    await admin.query(
+      "SELECT prescriber_id,prescriber FROM prescriptions WHERE id=$1",
+      [created.id],
+    )
+  ).rows[0];
+  expect(row.prescriber_id).toBe(user);
+  expect(row.prescriber.veterinarianName).toBe("Professional One");
+  await expect(
+    act(() =>
+      forOrg((db) =>
+        db.query("UPDATE prescriptions SET prescriber_id='other' WHERE id=$1", [
+          created.id,
+        ]),
+      ),
+    ),
+  ).rejects.toThrow("immutable");
+  expect(
+    await requestIdentity.run({ ...actor, userId: "other" }, () =>
+      forOrg(readProfessionalProfile),
+    ),
+  ).toBeNull();
+  expect(
+    await requestIdentity.run({ ...actor, orgId: "other" }, () =>
+      forOrg(readProfessionalProfile),
+    ),
+  ).toBeNull();
+  await expect(
+    requestIdentity.run({ ...actor, userId: "other" }, () =>
+      runCommand(command, randomUUID()),
+    ),
+  ).rejects.toThrow("Complete seu cadastro");
+  await expect(
+    requestIdentity.run({ ...actor, isVeterinarian: false }, () =>
+      saveProfessionalProfile(profile),
+    ),
+  ).rejects.toMatchObject({ status: 403 });
+  const input = {
+    certificate: cert.leaf.toString("base64"),
+    chain: [cert.root.toString("base64")],
+  };
+  await expect(
+    requestIdentity.run({ ...actor, userId: "other" }, () =>
+      preparePrescription(created.id, input),
+    ),
+  ).rejects.toMatchObject({ status: 403 });
+});
+it("does not guess the author of a historical prescription", async () => {
+  const legacy = randomUUID();
+  await admin.query(
+    "INSERT INTO prescriptions(id,organization_id,consultation_id,items) VALUES($1,$2,$3,'[]')",
+    [legacy, org, consult],
+  );
+  await expect(
+    act(() =>
+      preparePrescription(legacy, {
+        certificate: cert.leaf.toString("base64"),
+        chain: [cert.root.toString("base64")],
+      }),
+    ),
+  ).rejects.toThrow("anterior ao cadastro de autoria");
 });

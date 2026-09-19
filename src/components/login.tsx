@@ -27,7 +27,11 @@ export function Login({
       });
       if (result.error)
         throw Error(
-          "Não foi possível entrar. Confira se seu e-mail possui um convite ativo.",
+          result.error.code === "INVALID_ORIGIN"
+            ? "O endereço aberto difere do configurado para o login. Recarregue esta página para usar o endereço correto."
+            : result.error.status === 429
+              ? "Muitas tentativas de login. Aguarde um minuto e tente novamente."
+              : "Não foi possível iniciar o login Google. Recarregue a página e tente novamente.",
         );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao entrar.");
@@ -45,13 +49,13 @@ export function Login({
         <p className="muted">
           Entre com a conta Google que recebeu acesso à clínica.
         </p>
-        <label>
+        <label className="check-row login-shared-device">
           <input
             type="checkbox"
             checked={shared}
             onChange={(e) => setShared(e.target.checked)}
-          />{" "}
-          Estou em um dispositivo compartilhado
+          />
+          <span>Estou em um dispositivo compartilhado</span>
         </label>
         <p className="hint">
           {shared

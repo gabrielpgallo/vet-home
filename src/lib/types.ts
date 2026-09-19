@@ -67,6 +67,11 @@ export interface Application {
   createdAt: string;
 }
 export interface Prescription {
+  prescriberId?: string | null;
+  prescriber?: Omit<
+    import("./professional-profile").ProfessionalProfile,
+    "revision"
+  > | null;
   signedAt?: string | null;
   id: string;
   consultationId: string;
@@ -130,6 +135,9 @@ export interface Expense {
   createdAt: string;
 }
 export interface Bootstrap {
+  professionalProfile?:
+    | import("./professional-profile").ProfessionalProfile
+    | null;
   identity?: import("./permissions").Identity;
   expenses: Expense[];
   settings: import("./settings").PracticeSettings;

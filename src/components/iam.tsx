@@ -10,6 +10,7 @@ type Member = {
   role: Role;
   status: "active" | "suspended";
   revision: number;
+  is_veterinarian: boolean;
 };
 type Invite = {
   id: string;
@@ -33,7 +34,13 @@ type Session = {
   current: boolean;
 };
 const date = (s: string) => new Date(s).toLocaleString("pt-BR");
-export function Iam({ identity }: { identity: Identity }) {
+export function Iam({
+  identity,
+  onChanged,
+}: {
+  identity: Identity;
+  onChanged?: () => Promise<unknown>;
+}) {
   const [data, setData] = useState<{
       members: Member[];
       invitations: Invite[];
@@ -43,6 +50,7 @@ export function Iam({ identity }: { identity: Identity }) {
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false);
+  const [needsConfirmation, setNeedsConfirmation] = useState(false);
   const refresh = useCallback(async () => {
     const r = await fetch("/api/iam", { cache: "no-store" }),
       d = await r.json();
@@ -69,8 +77,14 @@ export function Iam({ identity }: { identity: Identity }) {
         body: JSON.stringify(command),
       });
       const d = await r.json();
+      if (r.status === 428) {
+        setNeedsConfirmation(true);
+        return false;
+      }
       if (!r.ok) throw Error(d.error);
       await refresh();
+      await onChanged?.();
+      setNeedsConfirmation(false);
       setNotice("Acesso atualizado.");
       return true;
     } catch (e) {
@@ -82,7 +96,7 @@ export function Iam({ identity }: { identity: Identity }) {
   }
   return (
     <div className="stack">
-      {!identity.local && <ReauthenticateLink userId={identity.userId} />}
+      {needsConfirmation && <ReauthenticateLink userId={identity.userId} />}
       {identity.local && (
         <div className="notice">
           Modo de desenvolvimento local: as permissões desta sessão são de
@@ -230,21 +244,25 @@ export function Iam({ identity }: { identity: Identity }) {
             <h3>Administradora</h3>
             <p>
               Acesso completo, incluindo financeiro, produtos, configurações e
-              gestão de usuários.
+              gestão de usuários. Para emitir receitas, também precisa da
+              habilitação veterinária e do cadastro profissional.
             </p>
           </div>
           <div>
             <h3>Veterinária</h3>
             <p>
               Agenda, cadastros, prontuários, exames, receitas e recebimentos.
-              Sem relatórios financeiros ou gestão de usuários.
+              Sem relatórios financeiros ou gestão de usuários. Para emitir
+              receitas, também precisa da habilitação veterinária e do cadastro
+              profissional.
             </p>
           </div>
           <div>
             <h3>Assistente</h3>
             <p>
               Agenda, cadastros e recebimentos. Sem conteúdo clínico, relatórios
-              financeiros ou gestão de usuários.
+              financeiros ou gestão de usuários. Para emitir receitas, também
+              precisa da habilitação veterinária e do cadastro profissional.
             </p>
           </div>
         </div>
@@ -303,6 +321,7 @@ function MemberRow({
   busy: boolean;
   act: (c: unknown) => Promise<boolean>;
 }) {
+  const [veterinarian, setVeterinarian] = useState(m.is_veterinarian);
   const [role, setRole] = useState(m.role),
     [status, setStatus] = useState(m.status);
   return (
@@ -331,13 +350,30 @@ function MemberRow({
           <option value="suspended">Suspenso</option>
         </select>
       </label>
+      {role === "admin" && (
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={veterinarian}
+            disabled={busy}
+            onChange={(e) => setVeterinarian(e.target.checked)}
+          />
+          Também atua como veterinário
+        </label>
+      )}
       <button
-        disabled={busy || (role === m.role && status === m.status)}
+        disabled={
+          busy ||
+          (role === m.role &&
+            status === m.status &&
+            veterinarian === m.is_veterinarian)
+        }
         onClick={() =>
           act({
             type: "membership",
             id: m.id,
             revision: m.revision,
+            isVeterinarian: veterinarian,
             role,
             status,
           })

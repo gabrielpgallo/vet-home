@@ -1,3 +1,4 @@
+import { formatInput } from "@/lib/input-formats";
 import PDFDocument from "pdfkit";
 import { dateKey, dateLabel } from "@/lib/domain";
 import type { PracticeBrand } from "./settings";
@@ -113,9 +114,9 @@ export function clinicalDocument(
       .stroke();
   }
   const contacts: Line[] = [
-    brand.phone,
+    formatInput("phone", brand.phone),
     brand.email,
-    brand.cnpj && `CNPJ: ${brand.cnpj}`,
+    brand.cnpj && `CNPJ: ${formatInput("cnpj", brand.cnpj)}`,
   ]
     .filter(Boolean)
     .map((text) => ({ text, size: 8.5, color: muted, gap: 2 }));
@@ -155,8 +156,9 @@ export function clinicalDocument(
     { text: `Tutor  ·  ${patient.tutor}`, bold: true, size: 11 },
     {
       text: [
-        patient.document && `CPF/CNPJ: ${patient.document}`,
-        patient.phone && `Tel.: ${patient.phone}`,
+        patient.document &&
+          `CPF/CNPJ: ${formatInput("document", patient.document)}`,
+        patient.phone && `Tel.: ${formatInput("phone", patient.phone)}`,
       ]
         .filter(Boolean)
         .join("   ·   "),
@@ -192,7 +194,7 @@ export function clinicalDocument(
     ...(brand.veterinarianCpf
       ? [
           {
-            text: `CPF: ${brand.veterinarianCpf}`,
+            text: `CPF: ${formatInput("cpf", brand.veterinarianCpf)}`,
             size: 9,
             color: muted,
             gap: 3,

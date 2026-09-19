@@ -18,6 +18,7 @@ export const iamCommand = z.discriminatedUnion("type", [
       type: z.literal("membership"),
       id: z.string().uuid(),
       role: z.enum(roles),
+      isVeterinarian: z.boolean().optional(),
       status: z.enum(["active", "suspended"]),
       revision: z.number().int().nonnegative(),
     })
@@ -28,7 +29,7 @@ export const iamCommand = z.discriminatedUnion("type", [
 ]);
 export async function listIam(actor: Identity) {
   const members = await pool.query(
-    "SELECT m.id,m.role,m.status,m.revision,u.name,u.email FROM iam_memberships m JOIN auth_user u ON u.id=m.user_id WHERE m.organization_id=$1 ORDER BY u.name",
+    "SELECT m.id,m.role,m.is_veterinarian,m.status,m.revision,u.name,u.email FROM iam_memberships m JOIN auth_user u ON u.id=m.user_id WHERE m.organization_id=$1 ORDER BY u.name",
     [actor.orgId],
   );
   const invitations = await pool.query(
@@ -132,8 +133,15 @@ export async function manageIam(input: unknown, actor: Identity) {
               );
           }
           await db.query(
-            "UPDATE iam_memberships SET role=$2,status=$3,revision=revision+1 WHERE id=$1",
-            [id, cmd.role, cmd.status],
+            "UPDATE iam_memberships SET role=$2,status=$3,is_veterinarian=$4,revision=revision+1 WHERE id=$1",
+            [
+              id,
+              cmd.role,
+              cmd.status,
+              cmd.role === "veterinarian" ||
+                (cmd.role === "admin" &&
+                  (cmd.isVeterinarian ?? m.is_veterinarian)),
+            ],
           );
         } else {
           await db.query(
@@ -174,7 +182,7 @@ export async function acceptInvitation(
         403,
       );
     await db.query(
-      "INSERT INTO iam_memberships(id,organization_id,user_id,role) VALUES($1,$2,$3,$4) ON CONFLICT(organization_id,user_id) DO NOTHING",
+      "INSERT INTO iam_memberships(id,organization_id,user_id,role,is_veterinarian) VALUES($1,$2,$3,$4,$4='veterinarian') ON CONFLICT(organization_id,user_id) DO NOTHING",
       [randomUUID(), invitation.organization_id, user.id, invitation.role],
     );
     await db.query(

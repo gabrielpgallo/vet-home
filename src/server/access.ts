@@ -31,6 +31,7 @@ export async function identity(): Promise<Identity> {
       orgId: ORG_ID,
       role: "admin",
       local: true,
+      isVeterinarian: true,
     };
   }
   if (process.env.AUTH_MODE !== "google" || !googleReady())
@@ -41,7 +42,7 @@ export async function identity(): Promise<Identity> {
   const security = await validateSession(session.session.id, session.user.id);
   const selected = (await cookies()).get("vet-clinic")?.value;
   const memberships = await pool.query(
-    "SELECT organization_id,role FROM iam_memberships WHERE user_id=$1 AND status='active' AND sessions_valid_after<$2 ORDER BY created_at",
+    "SELECT organization_id,role,is_veterinarian FROM iam_memberships WHERE user_id=$1 AND status='active' AND sessions_valid_after<$2 ORDER BY created_at",
     [session.user.id, security.createdAt],
   );
   const member = selected
@@ -58,6 +59,7 @@ export async function identity(): Promise<Identity> {
     name: session.user.name,
     orgId: member.organization_id,
     role: member.role,
+    isVeterinarian: member.is_veterinarian,
     local: false,
     sessionId: session.session.id,
     sessionFresh: security.fresh,

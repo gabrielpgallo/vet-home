@@ -20,6 +20,8 @@ import type {
   Tutor,
   Visit,
 } from "@/lib/types";
+import { MaskedInput } from "./masked-input";
+import { formatInput, phoneMatches, type InputMask } from "@/lib/input-formats";
 export type Mutate = (
   command: Command,
 ) => Promise<{ id: string; revision?: number; data: Bootstrap }>;
@@ -28,15 +30,30 @@ export function Field({
   label,
   name,
   value = "",
+  mask,
   ...props
-}: { label: string; name: string; value?: string | number } & Omit<
+}: {
+  label: string;
+  name: string;
+  value?: string | number;
+  mask?: InputMask;
+} & Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
-  "value"
+  "value" | "defaultValue"
 >) {
   return (
     <label>
       {label}
-      <input name={name} defaultValue={value} {...props} />
+      {mask ? (
+        <MaskedInput
+          mask={mask}
+          name={name}
+          defaultValue={String(value)}
+          {...props}
+        />
+      ) : (
+        <input name={name} defaultValue={value} {...props} />
+      )}
     </label>
   );
 }
@@ -135,10 +152,16 @@ export function TutorForm({
     >
       <div className="form-grid">
         <Field label="Nome do tutor" name="name" value={tutor?.name} required />
-        <Field label="Telefone / WhatsApp" name="phone" value={tutor?.phone} />
+        <Field
+          label="Telefone / WhatsApp"
+          mask="phone"
+          name="phone"
+          value={tutor?.phone}
+        />
         <Field label="E-mail" name="email" type="email" value={tutor?.email} />
         <Field
           label="CPF / CNPJ (opcional)"
+          mask="document"
           name="document"
           value={tutor?.document}
           maxLength={30}
@@ -316,10 +339,12 @@ export function ScheduleForm({
       {!selected && (
         <div className="search-results">
           {data.tutors
-            .filter((t) =>
-              (t.name + " " + t.phone)
-                .toLowerCase()
-                .includes(query.toLowerCase()),
+            .filter(
+              (t) =>
+                (t.name + " " + t.phone)
+                  .toLowerCase()
+                  .includes(query.toLowerCase()) ||
+                phoneMatches(t.phone, query),
             )
             .slice(0, 8)
             .map((t) => (
@@ -333,7 +358,7 @@ export function ScheduleForm({
                 }}
               >
                 <strong>{t.name}</strong>
-                <span>{t.phone}</span>
+                <span>{formatInput("phone", t.phone)}</span>
               </button>
             ))}
           <button type="button" className="link-button" onClick={onNewTutor}>
@@ -392,6 +417,7 @@ export function ScheduleForm({
         <Field
           label="Consulta e deslocamento (R$)"
           name="base"
+          mask="money"
           value="250,00"
           inputMode="decimal"
           required
@@ -448,6 +474,7 @@ export function ProductForm({
         <Field
           label="Custo por unidade (R$)"
           name="cost"
+          mask="money"
           value={((product?.costCents || 0) / 100).toFixed(2).replace(".", ",")}
           inputMode="decimal"
           required
@@ -455,6 +482,7 @@ export function ProductForm({
         <Field
           label="Venda por unidade (R$)"
           name="sale"
+          mask="money"
           value={((product?.saleCents || 0) / 100).toFixed(2).replace(".", ",")}
           inputMode="decimal"
           required
@@ -583,6 +611,7 @@ export function PaymentForm({
       <Field
         label="Valor recebido (R$)"
         name="amount"
+        mask="money"
         value={(due / 100).toFixed(2).replace(".", ",")}
         inputMode="decimal"
         required

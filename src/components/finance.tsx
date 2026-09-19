@@ -1,4 +1,5 @@
 "use client";
+import { MaskedInput } from "./masked-input";
 import { useEffect, useRef, useState } from "react";
 import { Plus, Download, ArrowUpRight, Wallet } from "lucide-react";
 import { AsyncForm } from "./forms";
@@ -603,7 +604,8 @@ function ExpenseDialog({
             </label>
             <label>
               Valor (R$)
-              <input
+              <MaskedInput
+                mask="money"
                 name="amount"
                 defaultValue={
                   expense

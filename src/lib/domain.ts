@@ -1,3 +1,4 @@
+import { phoneSchema, documentSchema } from "./input-formats";
 import { expenseSchema } from "./finance-schema";
 import { z } from "zod";
 export const ORG_ID = process.env.APP_ORG_ID || "ar-saude-animal";
@@ -93,10 +94,10 @@ const date = z
 export const tutorSchema = z
   .object({
     name: short.min(1),
-    phone: short,
+    phone: phoneSchema,
     email: z.union([z.literal(""), z.email()]),
     address: z.string().trim().min(1).max(500),
-    document: z.string().trim().max(30).optional(),
+    document: documentSchema.optional(),
   })
   .strict();
 export const patientSchema = z

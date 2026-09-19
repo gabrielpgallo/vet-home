@@ -15,6 +15,7 @@ export const permissions = [
   "finance.read",
   "finance.write",
   "settings.write",
+  "profile.write",
   "iam.manage",
   "audit.read",
 ] as const;
@@ -22,6 +23,7 @@ export type Permission = (typeof permissions)[number];
 const grants: Record<Role, readonly Permission[]> = {
   admin: permissions,
   veterinarian: [
+    "profile.write",
     "agenda.write",
     "registry.write",
     "clinical.read",
@@ -59,6 +61,14 @@ export interface Identity {
   orgId: string;
   role: Role;
   local: boolean;
+  isVeterinarian?: boolean;
   sessionId?: string;
   sessionFresh?: boolean;
 }
+
+export const isVeterinarian = (actor?: Identity) =>
+  Boolean(
+    actor &&
+      (actor.role === "veterinarian" ||
+        (actor.role === "admin" && actor.isVeterinarian)),
+  );
