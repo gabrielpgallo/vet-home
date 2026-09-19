@@ -6,19 +6,24 @@ import { checkOrigin } from "@/server/access";
 import { acceptInvitation } from "@/server/iam";
 import { apiError } from "@/server/http";
 import { appUrl } from "@/lib/app-url";
+import {
+  validateSession,
+  SESSION_ABSOLUTE_SECONDS,
+} from "@/server/session-security";
 async function userSession() {
   if (!googleReady()) throw new AppError("Configure o login Google.", 401);
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user.emailVerified)
     throw new AppError("Entre com sua conta Google.", 401);
+  await validateSession(session.session.id, session.user.id);
   return session;
 }
 export async function GET() {
   try {
     const session = await userSession();
     const memberships = await pool.query(
-      "SELECT m.organization_id AS id,o.name,m.role FROM iam_memberships m JOIN organizations o ON o.id=m.organization_id WHERE m.user_id=$1 AND m.status='active'",
-      [session.user.id],
+      "SELECT m.organization_id AS id,o.name,m.role FROM iam_memberships m JOIN organizations o ON o.id=m.organization_id WHERE m.user_id=$1 AND m.status='active' AND m.sessions_valid_after<$2",
+      [session.user.id, session.session.createdAt],
     );
     const invitations = await pool.query(
       "SELECT i.id,i.role,o.name FROM iam_invitations i JOIN organizations o ON o.id=i.organization_id WHERE i.email=lower($1) AND i.status='pending' AND i.expires_at>now()",
@@ -51,8 +56,8 @@ export async function POST(req: Request) {
     if (input.type === "accept")
       orgId = await acceptInvitation(session.user, input.id);
     const member = await pool.query(
-      "SELECT 1 FROM iam_memberships WHERE user_id=$1 AND organization_id=$2 AND status='active'",
-      [session.user.id, orgId],
+      "SELECT 1 FROM iam_memberships WHERE user_id=$1 AND organization_id=$2 AND status='active' AND sessions_valid_after<$3",
+      [session.user.id, orgId, session.session.createdAt],
     );
     if (!member.rowCount) throw new AppError("Sem acesso a esta clínica.", 403);
     (await cookies()).set("vet-clinic", orgId, {
@@ -60,7 +65,7 @@ export async function POST(req: Request) {
       secure: appUrl()?.startsWith("https:") || false,
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: SESSION_ABSOLUTE_SECONDS,
     });
     return Response.json({ ok: true });
   } catch (e) {

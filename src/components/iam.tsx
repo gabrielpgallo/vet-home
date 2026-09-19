@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { roles, roleLabels, type Role, type Identity } from "@/lib/permissions";
 import { authClient } from "@/lib/auth-client";
+import { ReauthenticateLink } from "./reauthenticate";
 type Member = {
   id: string;
   name: string;
@@ -37,6 +38,7 @@ export function Iam({ identity }: { identity: Identity }) {
       members: Member[];
       invitations: Invite[];
       audit: Audit[];
+      security: Audit[];
     } | null>(null),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -59,7 +61,11 @@ export function Iam({ identity }: { identity: Identity }) {
     try {
       const r = await fetch("/api/iam", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-vet-user": identity.userId,
+          "x-vet-clinic": identity.orgId,
+        },
         body: JSON.stringify(command),
       });
       const d = await r.json();
@@ -76,6 +82,7 @@ export function Iam({ identity }: { identity: Identity }) {
   }
   return (
     <div className="stack">
+      {!identity.local && <ReauthenticateLink userId={identity.userId} />}
       {identity.local && (
         <div className="notice">
           Modo de desenvolvimento local: as permissões desta sessão são de
@@ -254,19 +261,33 @@ export function Iam({ identity }: { identity: Identity }) {
             </tr>
           </thead>
           <tbody>
-            {data?.audit.map((a) => (
-              <tr key={a.id}>
-                <td>{date(a.created_at)}</td>
-                <td>
-                  {a.actor === "local-developer"
-                    ? "Desenvolvimento local"
-                    : a.actor === "system"
-                      ? "Sistema / registro anterior"
-                      : a.actor}
-                </td>
-                <td>{a.action}</td>
-              </tr>
-            ))}
+            {[
+              ...(data?.audit || []).map((a) => ({
+                ...a,
+                id: `audit-${a.id}`,
+              })),
+              ...(data?.security || []).map((a) => ({
+                ...a,
+                id: `security-${a.id}`,
+              })),
+            ]
+              .sort(
+                (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at),
+              )
+              .slice(0, 50)
+              .map((a) => (
+                <tr key={a.id}>
+                  <td>{date(a.created_at)}</td>
+                  <td>
+                    {a.actor === "local-developer"
+                      ? "Desenvolvimento local"
+                      : a.actor === "system"
+                        ? "Sistema / registro anterior"
+                        : a.actor}
+                  </td>
+                  <td>{a.action}</td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </section>
@@ -327,16 +348,23 @@ function MemberRow({
       <button
         disabled={busy}
         onClick={() => {
-          if (confirm("Encerrar todas as sessões desta conta?"))
+          if (
+            confirm(
+              "Exigir novo login desta pessoa para acessar esta clínica? O acesso às outras clínicas será preservado.",
+            )
+          )
             void act({ type: "revokeUserSessions", id: m.id });
         }}
       >
-        Encerrar sessões
+        Revogar sessões nesta clínica
       </button>
     </div>
   );
 }
 export function MyAccount({ identity }: { identity: Identity }) {
+  const [security, setSecurity] = useState<
+    { id: string; action: string; created_at: string }[]
+  >([]);
   const [sessions, setSessions] = useState<Session[]>([]),
     [error, setError] = useState("");
   const refresh = useCallback(async () => {
@@ -344,6 +372,8 @@ export function MyAccount({ identity }: { identity: Identity }) {
       d = await r.json();
     if (!r.ok) throw Error(d.error);
     setSessions(d);
+    const response = await fetch("/api/security-events", { cache: "no-store" });
+    if (response.ok) setSecurity(await response.json());
   }, []);
   useEffect(() => {
     // refresh updates state only after the network response.
@@ -379,6 +409,11 @@ export function MyAccount({ identity }: { identity: Identity }) {
       </section>
       <section className="panel">
         <h2>Minhas sessões</h2>
+        <p className="hint">
+          Sessões comuns: até 12 horas, com 2 horas de inatividade. Dispositivos
+          compartilhados: até 4 horas, com 30 minutos de inatividade. A
+          inatividade considera requisições ao servidor.
+        </p>
         {error && <p role="alert">{error}</p>}
         {sessions.map((s) => (
           <div className="iam-access" key={s.id}>
@@ -413,6 +448,14 @@ export function MyAccount({ identity }: { identity: Identity }) {
             )}
           </div>
         ))}
+        <h3>Atividade de segurança da minha conta</h3>
+        <ul>
+          {security.map((event) => (
+            <li key={event.id}>
+              {date(event.created_at)} · {event.action}
+            </li>
+          ))}
+        </ul>
         {!sessions.length && (
           <p className="muted">Nenhuma sessão Google ativa neste ambiente.</p>
         )}

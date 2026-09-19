@@ -3,6 +3,7 @@ import { z } from "zod";
 import { pool, forOrg, AppError } from "./db";
 import { requestIdentity } from "./context";
 import { roles, type Identity } from "@/lib/permissions";
+import { requireRecentIdentity } from "./session-security";
 const email = z
   .string()
   .trim()
@@ -39,13 +40,19 @@ export async function listIam(actor: Identity) {
       "SELECT a.id,a.action,a.entity_id,a.created_at,COALESCE(u.email,a.actor_id) AS actor FROM audit_log a LEFT JOIN auth_user u ON u.id=a.actor_id ORDER BY a.created_at DESC,a.id DESC LIMIT 50",
     ),
   );
+  const security = await pool.query(
+    "SELECT e.id,e.action,e.created_at,COALESCE(u.email,'Sistema') AS actor FROM security_events e LEFT JOIN auth_user u ON u.id=e.user_id WHERE e.organization_id=$1 ORDER BY e.created_at DESC,e.id DESC LIMIT 50",
+    [actor.orgId],
+  );
   return {
     members: members.rows,
     invitations: invitations.rows,
     audit: audit.rows,
+    security: security.rows,
   };
 }
 export async function manageIam(input: unknown, actor: Identity) {
+  requireRecentIdentity(actor);
   const cmd = iamCommand.parse(input);
   return requestIdentity.run(actor, () =>
     forOrg(async (db) => {
@@ -128,10 +135,16 @@ export async function manageIam(input: unknown, actor: Identity) {
             "UPDATE iam_memberships SET role=$2,status=$3,revision=revision+1 WHERE id=$1",
             [id, cmd.role, cmd.status],
           );
-        } else
-          await db.query('DELETE FROM auth_session WHERE "userId"=$1', [
-            m.user_id,
-          ]);
+        } else {
+          await db.query(
+            "UPDATE iam_memberships SET sessions_valid_after=now(),revision=revision+1 WHERE id=$1",
+            [id],
+          );
+          await db.query(
+            "INSERT INTO security_events(action,user_id,organization_id) VALUES('session.clinic_revoked',$1,$2)",
+            [m.user_id, actor.orgId],
+          );
+        }
       }
       await db.query(
         "INSERT INTO audit_log(organization_id,action,entity_id) VALUES($1,$2,$3)",

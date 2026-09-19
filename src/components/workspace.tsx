@@ -1,4 +1,5 @@
 "use client";
+import { ReauthenticateLink } from "./reauthenticate";
 import { Iam, MyAccount } from "./iam";
 import { can, type Permission } from "@/lib/permissions";
 import Image from "next/image";
@@ -127,10 +128,7 @@ export default function Workspace() {
   const refresh = useCallback(async () => {
     const r = await fetch("/api/data", { cache: "no-store" });
     const body = await r.json();
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- Full reload discards data and route caches after identity changes.
-    if (r.status === 401) window.location.assign("/login");
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- Full reload discards data and route caches after identity changes.
-    if (r.status === 403) window.location.assign("/access");
+    // Preserve open drafts when authentication expires; reconnect in a separate tab.
     if (!r.ok) throw Error(body.error || "Não foi possível carregar os dados.");
     setData(body);
     setFailure("");
@@ -152,7 +150,15 @@ export default function Workspace() {
     pending.current.set(key, id);
     const r = await fetch("/api/commands", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(data?.identity
+          ? {
+              "x-vet-user": data.identity.userId,
+              "x-vet-clinic": data.identity.orgId,
+            }
+          : {}),
+      },
       body: JSON.stringify({ id, command }),
     });
     const result = await r.json();
@@ -321,6 +327,7 @@ export default function Workspace() {
             {failure && (
               <>
                 <p>{failure}</p>
+                <a href="/login">Entrar novamente</a>
                 <button
                   onClick={() => refresh().catch((e) => setFailure(e.message))}
                 >
@@ -331,6 +338,15 @@ export default function Workspace() {
           </div>
         ) : (
           <>
+            {data.identity && !data.identity.local && (
+              <details className="session-help">
+                <summary>Problemas com sua sessão?</summary>
+                <ReauthenticateLink userId={data.identity.userId} />
+                <a href="/access" target="_blank" rel="noopener noreferrer">
+                  Ver clínicas e convites em outra aba
+                </a>
+              </details>
+            )}
             {page === "agenda" && (
               <>
                 {heading(
@@ -837,6 +853,7 @@ export default function Workspace() {
                 )}
                 <Settings
                   key={brand.revision}
+                  identity={data.identity!}
                   settings={brand}
                   guardRef={guardRef}
                   onSaved={async () => {

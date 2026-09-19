@@ -3,6 +3,10 @@ import { APIError } from "better-auth/api";
 import { pool } from "./db";
 import { appUrl } from "../lib/app-url";
 import { authPolicyPool } from "./auth-policy";
+import {
+  SESSION_ABSOLUTE_SECONDS,
+  SESSION_FRESH_SECONDS,
+} from "./session-security";
 export function googleReady() {
   return !!(
     process.env.GOOGLE_CLIENT_ID &&
@@ -22,9 +26,18 @@ export const auth = betterAuth({
   },
   session: {
     modelName: "auth_session",
-    expiresIn: 60 * 60 * 24 * 7,
-    updateAge: 60 * 60 * 24,
+    expiresIn: SESSION_ABSOLUTE_SECONDS,
+    updateAge: 60 * 60,
+    freshAge: SESSION_FRESH_SECONDS,
     cookieCache: { enabled: false },
+    additionalFields: {
+      sharedDevice: {
+        type: "boolean",
+        defaultValue: false,
+        input: false,
+        fieldName: "shared_device",
+      },
+    },
   },
   account: {
     modelName: "auth_account",
@@ -32,6 +45,12 @@ export const auth = betterAuth({
     encryptOAuthTokens: true,
   },
   verification: { modelName: "auth_verification" },
+  advanced: {
+    useSecureCookies: appUrl()?.startsWith("https:") || false,
+    ipAddress: {
+      ipAddressHeaders: process.env.VERCEL ? ["x-forwarded-for"] : [],
+    },
+  },
   emailAndPassword: { enabled: false },
   socialProviders: googleReady()
     ? {
@@ -49,8 +68,21 @@ export const auth = betterAuth({
     modelName: "auth_rate_limit",
     window: 60,
     max: 60,
+    customRules: { "/sign-in/social": { window: 60, max: 10 } },
   },
   databaseHooks: {
+    session: {
+      create: {
+        before: async (session, context) => ({
+          data: {
+            ...session,
+            sharedDevice: /(?:^|;\s*)vet-shared-device=true(?:;|$)/.test(
+              context?.headers?.get("cookie") || "",
+            ),
+          },
+        }),
+      },
+    },
     user: {
       create: {
         before: async (user) => {

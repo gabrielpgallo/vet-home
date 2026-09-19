@@ -21,6 +21,7 @@ const actor: Identity = {
   orgId: org,
   role: "admin",
   local: false,
+  sessionFresh: true,
 };
 beforeAll(async () => {
   await db.query("INSERT INTO organizations(id,name) VALUES($1,$1),($2,$2)", [

@@ -7,6 +7,7 @@ import { apiError } from "@/server/http";
 import { normalizeLogo } from "@/server/settings";
 import { z } from "zod";
 import { encryptIntegrationKey } from "@/server/integration-secrets";
+import { requireRecentIdentity } from "@/server/session-security";
 export const runtime = "nodejs";
 async function handlePOST(req: Request) {
   try {
@@ -20,6 +21,7 @@ async function handlePOST(req: Request) {
       .regex(/^[A-Za-z0-9_.-]*$/)
       .parse(form.get("geminiApiKey") ?? "");
     const removeGeminiKey = form.get("removeGeminiKey") === "true";
+    if (geminiKey || removeGeminiKey) requireRecentIdentity();
     if (geminiKey && geminiKey.length < 20)
       throw new AppError("Confira a chave de API do Gemini.");
     if (geminiKey && removeGeminiKey)

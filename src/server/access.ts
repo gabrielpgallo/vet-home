@@ -6,6 +6,11 @@ import { ORG_ID } from "@/lib/domain";
 import { requestIdentity } from "./context";
 import { apiError } from "./http";
 import { appUrl } from "../lib/app-url";
+import {
+  validateSession,
+  checkExpectedIdentity,
+  securityEvent,
+} from "./session-security";
 export async function identity(): Promise<Identity> {
   const h = await headers(),
     host = h.get("host") || "";
@@ -33,17 +38,18 @@ export async function identity(): Promise<Identity> {
   const session = await auth.api.getSession({ headers: h });
   if (!session || !session.user.emailVerified)
     throw new AppError("Entre com sua conta Google para continuar.", 401);
+  const security = await validateSession(session.session.id, session.user.id);
   const selected = (await cookies()).get("vet-clinic")?.value;
   const memberships = await pool.query(
-    "SELECT organization_id,role FROM iam_memberships WHERE user_id=$1 AND status='active' ORDER BY created_at",
-    [session.user.id],
+    "SELECT organization_id,role FROM iam_memberships WHERE user_id=$1 AND status='active' AND sessions_valid_after<$2 ORDER BY created_at",
+    [session.user.id, security.createdAt],
   );
   const member = selected
     ? memberships.rows.find((m) => m.organization_id === selected)
     : memberships.rows[0];
   if (!member)
     throw new AppError(
-      "Sua conta não tem acesso ativo a esta clínica. Consulte seus convites.",
+      "Sua conta não tem acesso ativo a esta clínica ou a sessão foi revogada. Entre novamente ou consulte seus convites.",
       403,
     );
   return {
@@ -54,14 +60,13 @@ export async function identity(): Promise<Identity> {
     role: member.role,
     local: false,
     sessionId: session.session.id,
+    sessionFresh: security.fresh,
   };
 }
 export async function checkOrigin(req: Request) {
   const host = req.headers.get("host") || "";
   const expected =
-    process.env.AUTH_MODE === "local"
-      ? "http://" + host
-      : appUrl();
+    process.env.AUTH_MODE === "local" ? "http://" + host : appUrl();
   if (!expected || req.headers.get("origin") !== new URL(expected).origin)
     throw new AppError("Origem da requisição não autorizada.", 403);
 }
@@ -78,8 +83,16 @@ export function withAccess<A extends unknown[]>(
     try {
       if (!["GET", "HEAD"].includes(req.method)) await checkOrigin(req);
       const actor = await identity();
-      if (permission && !can(actor.role, permission))
+      checkExpectedIdentity(req, actor);
+      if (permission && !can(actor.role, permission)) {
+        if (!actor.local)
+          await securityEvent(
+            "access.permission_denied",
+            actor.userId,
+            actor.orgId,
+          );
         throw new AppError("Seu perfil não tem permissão para esta ação.", 403);
+      }
       return await requestIdentity.run(actor, () => handler(req, ...args));
     } catch (e) {
       return apiError(e);

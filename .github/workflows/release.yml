@@ -61,6 +61,8 @@ jobs:
           node-version: "22"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Verificar vulnerabilidades de produção
+        run: pnpm audit --prod --audit-level high
       - run: pnpm db:migrate
       - run: pnpm lint
       - run: pnpm typecheck

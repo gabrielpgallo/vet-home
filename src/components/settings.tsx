@@ -9,12 +9,16 @@ import {
   HEX_COLOR,
 } from "@/lib/brand-color";
 import { AsyncForm } from "./forms";
+import type { Identity } from "@/lib/permissions";
+import { ReauthenticateLink } from "./reauthenticate";
 export function Settings({
   settings,
   onSaved,
   guardRef,
+  identity,
 }: {
   settings: PracticeSettings;
+  identity: Identity;
   onSaved: () => Promise<void>;
   guardRef: React.MutableRefObject<null | (() => boolean)>;
 }) {
@@ -106,7 +110,14 @@ export function Settings({
         if (geminiApiKey) body.set("geminiApiKey", geminiApiKey);
         body.set("removeGeminiKey", String(removeGeminiKey));
         if (logo) body.set("logo", logo);
-        const r = await fetch("/api/settings", { method: "POST", body });
+        const r = await fetch("/api/settings", {
+          method: "POST",
+          body,
+          headers: {
+            "x-vet-user": identity.userId,
+            "x-vet-clinic": identity.orgId,
+          },
+        });
         const result = await r.json();
         if (!r.ok)
           throw Error(
@@ -116,6 +127,7 @@ export function Settings({
       }}
     >
       <div className="settings-grid">
+        {!identity.local && <ReauthenticateLink userId={identity.userId} />}
         <section className="panel stack">
           <div>
             <h2>Identidade da empresa</h2>

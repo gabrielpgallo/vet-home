@@ -28,6 +28,7 @@ const appTables = [
   "auth_account",
   "auth_verification",
   "auth_rate_limit",
+  "security_events",
   "iam_memberships",
   "iam_invitations",
 ];
@@ -90,6 +91,9 @@ try {
   await client.query("GRANT SELECT ON organizations TO vet_app");
   await client.query(
     "GRANT USAGE,SELECT ON SEQUENCE public.audit_log_id_seq TO vet_app",
+  );
+  await client.query(
+    "GRANT USAGE,SELECT ON SEQUENCE public.security_events_id_seq TO vet_app",
   );
   // IAM and authentication tables are accessed exclusively by the server.
   // Supabase's default API grants must not expose them via PostgREST.

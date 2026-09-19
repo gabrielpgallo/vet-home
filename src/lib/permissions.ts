@@ -59,4 +59,5 @@ export interface Identity {
   role: Role;
   local: boolean;
   sessionId?: string;
+  sessionFresh?: boolean;
 }
