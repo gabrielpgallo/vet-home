@@ -97,7 +97,14 @@ try {
   );
   // IAM and authentication tables are accessed exclusively by the server.
   // Supabase's default API grants must not expose them via PostgREST.
-  const protectedTables = [...appTables, "organizations", "schema_migrations"]
+  await client.query("REVOKE ALL ON change_log FROM vet_app");
+  await client.query("GRANT SELECT ON change_log TO vet_app");
+  const protectedTables = [
+    ...appTables,
+    "change_log",
+    "organizations",
+    "schema_migrations",
+  ]
     .map((t) => `public.${t}`)
     .join(",");
   await client.query(`REVOKE ALL ON ${protectedTables} FROM PUBLIC`);

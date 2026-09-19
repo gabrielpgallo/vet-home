@@ -1,5 +1,6 @@
 "use client";
 import { ReauthenticateLink } from "./reauthenticate";
+import { AuditLog } from "./audit";
 import { Iam, MyAccount } from "./iam";
 import { can, type Permission } from "@/lib/permissions";
 import Image from "next/image";
@@ -71,6 +72,7 @@ type Page =
   | "prescription"
   | "settings"
   | "finance"
+  | "audit"
   | "iam"
   | "account";
 type Modal = {
@@ -98,6 +100,7 @@ const nav = [
   ["finance", "Financeiro", Wallet],
   ["settings", "Configurações", Settings2],
   ["iam", "Usuários e acessos", Users],
+  ["audit", "Auditoria", ClipboardList],
 ] as const;
 const statusLabel = {
   scheduled: "Agendada",
@@ -267,13 +270,15 @@ export default function Workspace() {
                 ? allowed("finance.read")
                 : key === "settings"
                   ? allowed("settings.write")
-                  : key === "iam"
-                    ? allowed("iam.manage")
-                    : key === "products"
-                      ? allowed("products.write")
-                      : key === "pending"
-                        ? clinical
-                        : true,
+                  : key === "audit"
+                    ? allowed("audit.read")
+                    : key === "iam"
+                      ? allowed("iam.manage")
+                      : key === "products"
+                        ? allowed("products.write")
+                        : key === "pending"
+                          ? clinical
+                          : true,
             )
             .map(([key, label, Icon]) => (
               <button
@@ -812,6 +817,15 @@ export default function Workspace() {
                   Este catálogo calcula aplicações. Controle de estoque e lotes
                   em estoque virão em outra etapa.
                 </p>
+              </>
+            )}
+            {page === "audit" && data.identity && allowed("audit.read") && (
+              <>
+                {heading(
+                  "Auditoria",
+                  "Acompanhe as mudanças nos dados desta clínica.",
+                )}
+                <AuditLog key={data.identity.orgId} identity={data.identity} />
               </>
             )}
             {page === "iam" && data.identity && allowed("iam.manage") && (

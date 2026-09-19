@@ -16,6 +16,7 @@ export const permissions = [
   "finance.write",
   "settings.write",
   "iam.manage",
+  "audit.read",
 ] as const;
 export type Permission = (typeof permissions)[number];
 const grants: Record<Role, readonly Permission[]> = {
