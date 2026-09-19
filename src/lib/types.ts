@@ -67,6 +67,7 @@ export interface Application {
   createdAt: string;
 }
 export interface Prescription {
+  signedAt?: string | null;
   id: string;
   consultationId: string;
   items: RxItem[];

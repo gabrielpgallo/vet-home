@@ -61,7 +61,7 @@ export async function readAudit(params: URLSearchParams) {
       SELECT id,created_at,actor,entity_type,entity_id,operation,changed_fields,
         COALESCE(after_data->>'name',before_data->>'name',after_data->>'product_name',before_data->>'product_name',
           after_data->>'description',before_data->>'description',after_data->>'company_name',before_data->>'company_name',
-          after_data->>'title',before_data->>'title','') AS label
+          after_data->>'title',before_data->>'title',after_data->>'signer_name',before_data->>'signer_name','') AS label
       FROM change_log ${where.length ? "WHERE " + where.join(" AND ") : ""}
       ORDER BY id DESC LIMIT 51`,
       values,

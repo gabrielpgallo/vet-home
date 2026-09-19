@@ -56,7 +56,12 @@ type Line = {
 export function clinicalDocument(
   patient: ClinicalPatient,
   brand: PracticeBrand,
-  meta: { kind: "prescription" | "exam"; id: string; date: string },
+  meta: {
+    kind: "prescription" | "exam";
+    id: string;
+    date: string;
+    forSigning?: boolean;
+  },
 ) {
   const primary = brandPalette(brand.primaryColor).primary;
   const prescription = meta.kind === "prescription";
@@ -315,9 +320,11 @@ export function clinicalDocument(
       linesAt(
         [
           {
-            text: prescription
-              ? "Rascunho · Documento sem assinatura digital."
-              : "Documento sem assinatura digital.",
+            text: meta.forSigning
+              ? "Assinatura digital: confira a autenticidade em validar.iti.gov.br."
+              : prescription
+                ? "Rascunho · Documento sem assinatura digital."
+                : "Documento sem assinatura digital.",
             size: 8,
             color: muted,
           },

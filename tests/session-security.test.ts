@@ -26,6 +26,7 @@ import {
 import { manageIam } from "../src/server/iam";
 import { POST as revokeOwnSession } from "../src/app/api/sessions/route";
 import { GET as confirmIdentity } from "../src/app/api/reauth/route";
+import { POST as prepareSignature } from "../src/app/api/prescriptions/[id]/signature/route";
 import { GET as events } from "../src/app/api/security-events/route";
 const db = new Pool({ connectionString: process.env.ADMIN_DATABASE_URL });
 const user = randomUUID(),
@@ -297,4 +298,19 @@ it("never permits the development bypass on Vercel or a remote host", async () =
   vi.stubEnv("VERCEL", "");
   mock.headers = new Headers({ host: "evil.example" });
   await expect(identity()).rejects.toMatchObject({ status: 403 });
+});
+
+it("rejects signing by assistants before accepting any certificate material", async () => {
+  await db.query("UPDATE iam_memberships SET role='assistant' WHERE id=$1", [
+    member,
+  ]);
+  const response = await prepareSignature(
+    new Request(origin + "/api/prescriptions/" + randomUUID() + "/signature", {
+      method: "POST",
+      headers: { origin, "content-type": "application/json" },
+      body: "{}",
+    }),
+    { params: Promise.resolve({ id: randomUUID() }) },
+  );
+  expect(response.status).toBe(403);
 });

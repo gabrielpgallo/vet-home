@@ -30,6 +30,13 @@ export async function loadData(): Promise<Bootstrap> {
     const result: Record<string, unknown> = { settings };
     for (const [key, table] of Object.entries(tables))
       result[key] = camelRows((await db.query(`SELECT * FROM ${table}`)).rows);
+    result.prescriptions = camelRows(
+      (
+        await db.query(
+          `SELECT r.*,s.signed_at FROM prescriptions r LEFT JOIN prescription_signatures s ON s.prescription_id=r.id`,
+        )
+      ).rows,
+    );
     result.expenses = camelRows(
       (
         await db.query(

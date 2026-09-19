@@ -8,6 +8,7 @@ export const auditEntities = {
   consultations: "Atendimentos",
   applications: "Aplicações",
   prescriptions: "Receitas",
+  prescription_signatures: "Assinaturas de receitas",
   exams: "Exames",
   exam_links: "Vínculos de exames",
   attachments: "Anexos",
@@ -35,6 +36,13 @@ export type AuditEntry = {
   after_data?: Record<string, unknown> | null;
 };
 export const auditFields: Record<string, string> = {
+  prescription_id: "Receita (ID)",
+  attempt_id: "Solicitação de assinatura (ID)",
+  signer_name: "Titular do certificado",
+  fingerprint: "Impressão digital do certificado",
+  signed_at: "Assinada em",
+  pdf_sha256: "Identificador SHA-256 do PDF",
+  validation_scope: "Verificações realizadas",
   name: "Nome",
   phone: "Telefone",
   email: "E-mail",
@@ -96,6 +104,11 @@ export const auditFields: Record<string, string> = {
   primary_color: "Cor primária",
 };
 export function auditValue(field: string, value: unknown): string {
+  if (
+    field === "validation_scope" &&
+    value === "signature_chain_dates_no_revocation"
+  )
+    return "Assinatura, cadeia e validade conferidas; revogação pendente no ITI";
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "boolean") return value ? "Sim" : "Não";
   if (typeof value === "number" && field.endsWith("_cents"))

@@ -1,5 +1,6 @@
 "use client";
 import { ReauthenticateLink } from "./reauthenticate";
+import { PrescriptionSignature } from "./prescription-signature";
 import { AuditLog } from "./audit";
 import { Iam, MyAccount } from "./iam";
 import { can, type Permission } from "@/lib/permissions";
@@ -1267,14 +1268,11 @@ function TimelinePost({
       {rx && (
         <>
           <p>{rx.items.map((i) => i.name).join(" · ")}</p>
-          <a
-            className="text-link"
-            href={`/api/prescriptions/${rx.id}/pdf`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Baixar PDF · rascunho sem assinatura
-          </a>
+          <PrescriptionSignature
+            id={rx.id}
+            signedAt={rx.signedAt}
+            identity={data.identity}
+          />
         </>
       )}
       {exam && (
@@ -1548,16 +1546,14 @@ function Encounter({
             {data.prescriptions
               .filter((p) => p.consultationId === c.id)
               .map((p) => (
-                <a
-                  className="record-link"
-                  key={p.id}
-                  href={`/api/prescriptions/${p.id}/pdf`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <div className="record-row" key={p.id}>
                   <span>Receita · {p.items.map((i) => i.name).join(", ")}</span>
-                  <span>PDF rascunho ↗</span>
-                </a>
+                  <PrescriptionSignature
+                    id={p.id}
+                    signedAt={p.signedAt}
+                    identity={data.identity}
+                  />
+                </div>
               ))}
             {data.exams
               .filter(

@@ -13,6 +13,7 @@ const appTables = [
   "products",
   "applications",
   "prescriptions",
+  "prescription_signatures",
   "attachments",
   "exams",
   "exam_links",

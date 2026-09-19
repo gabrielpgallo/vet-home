@@ -15,6 +15,23 @@ async function handleGET(
       .string()
       .uuid()
       .parse((await ctx.params).id);
+    const signed = await forOrg(
+      async (db) =>
+        (
+          await db.query(
+            "SELECT signed_pdf FROM prescription_signatures WHERE prescription_id=$1 AND signed_at IS NOT NULL",
+            [id],
+          )
+        ).rows[0],
+    );
+    if (signed)
+      return new NextResponse(new Uint8Array(signed.signed_pdf), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": 'attachment; filename="receita-assinada.pdf"',
+          "Cache-Control": "no-store",
+        },
+      });
     const rx = await forOrg(
       async (db) =>
         (

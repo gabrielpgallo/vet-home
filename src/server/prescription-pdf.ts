@@ -11,11 +11,13 @@ export interface PrescriptionDocument extends ClinicalPatient {
 export async function createPrescriptionPdf(
   rx: PrescriptionDocument,
   brand: PracticeBrand,
+  forSigning = false,
 ) {
   const pdf = clinicalDocument(rx, brand, {
     kind: "prescription",
     id: rx.id,
     date: rx.createdAt,
+    forSigning,
   });
   pdf.section("Prescrição");
   rx.items.forEach((item, index) =>
