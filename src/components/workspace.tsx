@@ -5,6 +5,8 @@ import { AuditLog } from "./audit";
 import { Iam, MyAccount } from "./iam";
 import { can, isVeterinarian, type Permission } from "@/lib/permissions";
 import Image from "next/image";
+import { Dialog } from "./dialog";
+import { PrescriptionEditor } from "./prescription-editor";
 import { Settings } from "./settings";
 import { AnamnesisAI } from "./anamnesis-ai";
 import { defaultSettings } from "@/lib/settings";
@@ -31,7 +33,6 @@ import {
   MapPin,
   Clock,
   ChevronRight,
-  X,
   Stethoscope,
   SunMoon,
   Search,
@@ -54,7 +55,6 @@ import {
   ExamForm,
   PatientForm,
   PaymentForm,
-  PrescriptionEditor,
   ProductForm,
   ScheduleForm,
   TutorForm,
@@ -70,7 +70,6 @@ type Page =
   | "visit"
   | "patient"
   | "consultation"
-  | "prescription"
   | "settings"
   | "finance"
   | "audit"
@@ -85,6 +84,7 @@ type Modal = {
     | "application"
     | "payment"
     | "exam"
+    | "prescription"
     | "note";
   id?: string;
   patientId?: string;
@@ -176,7 +176,7 @@ export default function Workspace() {
     return { ...result, data: fresh };
   };
   function go(next: Page, id = "") {
-    if (["consultation", "prescription"].includes(next) && !clinical) return;
+    if (next === "consultation" && !clinical) return;
     if (guardRef.current && !guardRef.current()) return;
     guardRef.current = null;
     setPage(next);
@@ -196,7 +196,11 @@ export default function Workspace() {
       setToast(e instanceof Error ? e.message : "Falha ao abrir atendimento.");
     }
   }
-  const close = () => setModal(null);
+  const documentDirty = useRef(false);
+  const close = () => {
+    documentDirty.current = false;
+    setModal(null);
+  };
   const patient = data?.patients.find((p) => p.id === selected),
     visit = data?.visits.find((v) => v.id === selected),
     consult = data?.consultations.find((c) => c.id === selected);
@@ -287,9 +291,7 @@ export default function Workspace() {
                 className={
                   page === key ||
                   (key === "patients" &&
-                    ["patient", "consultation", "prescription"].includes(
-                      page,
-                    )) ||
+                    ["patient", "consultation"].includes(page)) ||
                   (key === "agenda" && page === "visit")
                     ? "nav-item active"
                     : "nav-item"
@@ -686,25 +688,14 @@ export default function Workspace() {
                     id: consult.id,
                   })
                 }
-                prescription={() => go("prescription", consult.id)}
+                prescription={() =>
+                  setModal({
+                    kind: "prescription",
+                    consultationId: consult.id,
+                    patientId: consult.patientId,
+                  })
+                }
                 openConsult={(id) => go("consultation", id)}
-              />
-            )}
-            {page === "prescription" && consult && (
-              <PrescriptionEditor
-                patient={data.patients.find((p) => p.id === consult.patientId)!}
-                consultation={consult}
-                data={data}
-                mutate={mutate}
-                onDone={() => go("consultation", consult.id)}
-                onBack={() => {
-                  if (
-                    confirm(
-                      "Voltar ao atendimento? Os itens desta receita ainda não salva serão descartados.",
-                    )
-                  )
-                    go("consultation", consult.id);
-                }}
               />
             )}
             {page === "tutors" && (
@@ -994,6 +985,9 @@ export default function Workspace() {
       )}
       {data && modal && (
         <Dialog
+          key={`${modal.kind}:${modal.id || modal.consultationId || modal.patientId || "new"}`}
+          drawer={modal.kind === "exam" || modal.kind === "prescription"}
+          dirtyRef={documentDirty}
           title={
             {
               tutor: modal.id ? "Editar tutor" : "Novo tutor",
@@ -1003,6 +997,7 @@ export default function Workspace() {
               application: "Registrar aplicação",
               payment: "Registrar recebimento",
               exam: "Exames",
+              prescription: "Nova receita",
               note: "Nota de acompanhamento",
             }[modal.kind]
           }
@@ -1065,6 +1060,21 @@ export default function Workspace() {
               onDone={close}
             />
           )}
+          {modal.kind === "prescription" &&
+            data.consultations.find((c) => c.id === modal.consultationId) && (
+              <PrescriptionEditor
+                patient={data.patients.find((p) => p.id === modal.patientId)!}
+                consultation={
+                  data.consultations.find((c) => c.id === modal.consultationId)!
+                }
+                data={data}
+                mutate={mutate}
+                onDone={close}
+                onDirty={() => {
+                  documentDirty.current = true;
+                }}
+              />
+            )}
           {modal.kind === "exam" && (
             <ExamForm
               patientId={modal.patientId!}
@@ -1112,33 +1122,6 @@ function Back({ onClick }: { onClick: () => void }) {
 }
 function Empty({ text }: { text: string }) {
   return <p className="empty muted">{text}</p>;
-}
-function Dialog({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    dialog?.showModal();
-    return () => dialog?.close();
-  }, []);
-  return (
-    <dialog ref={ref} onCancel={onClose} aria-labelledby="dialog-title">
-      <div className="dialog-head">
-        <h2 id="dialog-title">{title}</h2>
-        <button aria-label="Fechar" onClick={onClose}>
-          <X size={20} />
-        </button>
-      </div>
-      <div className="dialog-body">{children}</div>
-    </dialog>
-  );
 }
 function Measurements({ consultation: c }: { consultation?: Consultation }) {
   return c ? (

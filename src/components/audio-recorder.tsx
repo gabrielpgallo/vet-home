@@ -5,10 +5,14 @@ import { createAudioRecording } from "@/lib/audio-recording";
 
 export function AudioRecorder({
   disabled,
+  title = "Conte como foi a consulta",
+  buttonLabel = "Gravar relato",
   onAudio,
   onActive,
 }: {
   disabled: boolean;
+  title?: string;
+  buttonLabel?: string;
   onAudio: (file: File) => void;
   onActive: (active: boolean) => void;
 }) {
@@ -53,7 +57,7 @@ export function AudioRecorder({
   }
   return (
     <div className="ai-recorder stack">
-      <strong>Conte como foi a consulta</strong>
+      <strong>{title}</strong>
       <p className="hint">
         Grave até 5 minutos. Você pode ouvir antes de enviar para a IA.
       </p>
@@ -65,7 +69,7 @@ export function AudioRecorder({
             disabled={disabled}
             onClick={begin}
           >
-            <Mic size={18} /> Gravar relato
+            <Mic size={18} /> {buttonLabel}
           </button>
         ) : (
           <>

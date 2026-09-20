@@ -2122,3 +2122,80 @@ dialog.ai-drawer {
     margin-left: 34px;
   }
 }
+
+/* Clinical documents use the same right-side panel as the anamnesis assistant. */
+.document-drawer .dialog-head {
+  z-index: 2;
+  background: var(--surface);
+}
+.document-drawer .dialog-body {
+  display: grid;
+  gap: 22px;
+}
+.document-drawer .dialog-body > [hidden] {
+  display: none;
+}
+.document-drawer .panel {
+  padding: 20px;
+  box-shadow: none;
+}
+.document-drawer .form-actions {
+  flex-wrap: wrap;
+}
+.document-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 12px 16px;
+  background: var(--surface2);
+  border-radius: 10px;
+}
+.document-context span {
+  color: var(--muted);
+}
+.prescription-ai audio {
+  width: 100%;
+}
+.prescription-ai > .hint:empty {
+  display: none;
+}
+.rx-suggestion {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.rx-suggestion dl {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+.rx-suggestion dl > div {
+  display: grid;
+  grid-template-columns: minmax(100px, 35%) 1fr;
+  gap: 12px;
+}
+.rx-suggestion dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.rx-suggestion dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+@media (max-width: 600px) {
+  .document-drawer .dialog-head,
+  .document-drawer .dialog-body {
+    padding: 18px;
+  }
+  .document-drawer .ai-steps {
+    flex-wrap: wrap;
+  }
+  .document-drawer .ai-steps button {
+    font-size: 12px;
+  }
+  .document-drawer .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
