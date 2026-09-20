@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { roles, roleLabels, type Role, type Identity } from "@/lib/permissions";
 import { authClient } from "@/lib/auth-client";
+import { useConfirmation } from "./confirmation";
 import { ReauthenticateLink } from "./reauthenticate";
 type Member = {
   id: string;
@@ -321,11 +322,13 @@ function MemberRow({
   busy: boolean;
   act: (c: unknown) => Promise<boolean>;
 }) {
+  const { confirm, confirmation } = useConfirmation();
   const [veterinarian, setVeterinarian] = useState(m.is_veterinarian);
   const [role, setRole] = useState(m.role),
     [status, setStatus] = useState(m.status);
   return (
     <div className="iam-member">
+      {confirmation}
       <div>
         <strong>{m.name}</strong>
         <p className="muted">{m.email}</p>
@@ -383,11 +386,14 @@ function MemberRow({
       </button>
       <button
         disabled={busy}
-        onClick={() => {
+        onClick={async () => {
           if (
-            confirm(
-              "Exigir novo login desta pessoa para acessar esta clínica? O acesso às outras clínicas será preservado.",
-            )
+            await confirm({
+              title: "Revogar sessões nesta clínica?",
+              description: `${m.name} precisará entrar novamente para acessar esta clínica. O acesso às outras clínicas será preservado.`,
+              confirmLabel: "Revogar sessões",
+              danger: true,
+            })
           )
             void act({ type: "revokeUserSessions", id: m.id });
         }}

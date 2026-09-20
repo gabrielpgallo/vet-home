@@ -1,4 +1,5 @@
 "use client";
+import { useConfirmation } from "./confirmation";
 import { MaskedInput } from "./masked-input";
 import { useEffect, useRef, useState } from "react";
 import { Plus, Download, ArrowUpRight, Wallet } from "lucide-react";
@@ -21,6 +22,7 @@ export function Finance({
   mutate: Mutate;
   openVisit: (id: string) => void;
 }) {
+  const { confirm, confirmation } = useConfirmation();
   const [range, setRange] = useState<FinanceRange>(() =>
       financePreset("month"),
     ),
@@ -39,6 +41,7 @@ export function Finance({
   };
   return (
     <>
+      {confirmation}
       <div className="finance-toolbar">
         <div className="finance-filters">
           <label>
@@ -311,9 +314,12 @@ export function Finance({
                           <button
                             onClick={async () => {
                               if (
-                                !confirm(
-                                  `Excluir a despesa “${e.description}”?`,
-                                )
+                                !(await confirm({
+                                  title: "Excluir esta despesa?",
+                                  description: `A despesa “${e.description}” deixará de compor os totais financeiros. A exclusão ficará registrada na auditoria.`,
+                                  confirmLabel: "Excluir despesa",
+                                  danger: true,
+                                }))
                               )
                                 return;
                               setError("");

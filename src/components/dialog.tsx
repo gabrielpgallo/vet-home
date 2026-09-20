@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useConfirmation } from "./confirmation";
 import { X } from "lucide-react";
 
 export function Dialog({
@@ -15,6 +16,7 @@ export function Dialog({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const { confirm, confirmation } = useConfirmation();
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = ref.current;
@@ -35,12 +37,19 @@ export function Dialog({
       window.removeEventListener("beforeunload", before);
     };
   }, [drawer, dirtyRef]);
-  function dismiss() {
+  async function dismiss() {
     if (ref.current?.querySelector("form > fieldset:disabled")) return;
     if (
       drawer &&
       dirtyRef.current &&
-      !confirm("Descartar as alterações deste documento e fechar?")
+      !(await confirm({
+        title: "Descartar este rascunho?",
+        description:
+          "As alterações deste documento ainda não foram salvas. Ao fechar, elas serão descartadas.",
+        confirmLabel: "Descartar alterações",
+        cancelLabel: "Continuar editando",
+        danger: true,
+      }))
     )
       return;
     onClose();
@@ -58,6 +67,7 @@ export function Dialog({
       }}
       aria-labelledby="dialog-title"
     >
+      {confirmation}
       <div className="dialog-head">
         <h2 id="dialog-title">{title}</h2>
         <button type="button" aria-label="Fechar" onClick={dismiss}>

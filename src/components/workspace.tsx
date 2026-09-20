@@ -5,6 +5,7 @@ import { AuditLog } from "./audit";
 import { Iam, MyAccount } from "./iam";
 import { can, isVeterinarian, type Permission } from "@/lib/permissions";
 import Image from "next/image";
+import { useConfirmation, type NavigationGuard } from "./confirmation";
 import { Dialog } from "./dialog";
 import { PrescriptionEditor } from "./prescription-editor";
 import { Settings } from "./settings";
@@ -110,6 +111,8 @@ const statusLabel = {
   draft: "Em atendimento",
 };
 export default function Workspace() {
+  const { confirm, confirmation } = useConfirmation();
+  const navigating = useRef(false);
   const [data, setData] = useState<Bootstrap | null>(null),
     [failure, setFailure] = useState(""),
     [page, setPage] = useState<Page>("agenda"),
@@ -128,7 +131,7 @@ export default function Workspace() {
   }, [brand.companyName]);
   const { theme, setTheme } = useTheme();
   const pending = useRef(new Map<string, string>()),
-    guardRef = useRef<null | (() => boolean)>(null);
+    guardRef = useRef<NavigationGuard | null>(null);
   const refresh = useCallback(async () => {
     const r = await fetch("/api/data", { cache: "no-store" });
     const body = await r.json();
@@ -175,14 +178,19 @@ export default function Workspace() {
     setToast("Salvo com sucesso");
     return { ...result, data: fresh };
   };
-  function go(next: Page, id = "") {
-    if (next === "consultation" && !clinical) return;
-    if (guardRef.current && !guardRef.current()) return;
-    guardRef.current = null;
-    setPage(next);
-    setSelected(id);
-    setQuery("");
-    window.scrollTo(0, 0);
+  async function go(next: Page, id = "") {
+    if ((next === "consultation" && !clinical) || navigating.current) return;
+    navigating.current = true;
+    try {
+      if (guardRef.current && !(await guardRef.current())) return;
+      guardRef.current = null;
+      setPage(next);
+      setSelected(id);
+      setQuery("");
+      window.scrollTo(0, 0);
+    } finally {
+      navigating.current = false;
+    }
   }
   async function start(visitId: string, patientId: string) {
     try {
@@ -242,6 +250,7 @@ export default function Workspace() {
       className="app-shell clinic-theme"
       style={brandThemeStyle(brand.primaryColor)}
     >
+      {confirmation}
       <aside className="sidebar">
         <a
           className="brand"
@@ -513,7 +522,16 @@ export default function Workspace() {
                         <button
                           className="link-button full"
                           onClick={async () => {
-                            if (confirm("Cancelar esta visita?"))
+                            if (
+                              await confirm({
+                                title: "Cancelar esta visita?",
+                                description:
+                                  "A visita deixará de constar como agendada. O registro do cancelamento será mantido no histórico.",
+                                confirmLabel: "Cancelar visita",
+                                cancelLabel: "Manter agendamento",
+                                danger: true,
+                              })
+                            )
                               try {
                                 await mutate({
                                   type: "visit.cancel",
@@ -1335,12 +1353,13 @@ function Encounter({
   consultation: Consultation;
   data: Bootstrap;
   mutate: Mutate;
-  guardRef: React.MutableRefObject<null | (() => boolean)>;
+  guardRef: React.MutableRefObject<NavigationGuard | null>;
   back: () => void;
   onAction: (kind: "application" | "exam" | "note") => void;
   prescription: () => void;
   openConsult: (id: string) => void;
 }) {
+  const { confirm, confirmation } = useConfirmation();
   const [notes, setNotes] = useState(c.notes),
     [vitals, setVitals] = useState(c.vitals),
     [history, setHistory] = useState(false),
@@ -1354,9 +1373,14 @@ function Encounter({
   useEffect(() => {
     guardRef.current = () =>
       !dirty ||
-      confirm(
-        "Há alterações não salvas no atendimento. Deseja sair e descartá-las?",
-      );
+      confirm({
+        title: "Sair sem salvar o atendimento?",
+        description:
+          "As alterações no registro clínico ainda não foram salvas. Você pode continuar editando ou descartá-las para sair.",
+        confirmLabel: "Descartar e sair",
+        cancelLabel: "Continuar editando",
+        danger: true,
+      });
     const before = (e: BeforeUnloadEvent) => {
       if (dirty) {
         e.preventDefault();
@@ -1368,13 +1392,17 @@ function Encounter({
       guardRef.current = null;
       window.removeEventListener("beforeunload", before);
     };
-  }, [dirty, guardRef]);
+  }, [dirty, guardRef, confirm]);
   async function save(complete = false) {
     if (
       complete &&
-      !confirm(
-        "Concluir este atendimento? O registro clínico será preservado; complementos poderão ser adicionados como notas.",
-      )
+      !(await confirm({
+        title: "Concluir atendimento?",
+        description:
+          "O registro clínico será preservado. Depois de concluir, você poderá adicionar complementos como notas no histórico.",
+        confirmLabel: "Concluir atendimento",
+        cancelLabel: "Continuar editando",
+      }))
     )
       return;
     setBusy(true);
@@ -1397,6 +1425,7 @@ function Encounter({
   }
   return (
     <>
+      {confirmation}
       <Back onClick={back} />
       <div className="page-heading">
         <div>
