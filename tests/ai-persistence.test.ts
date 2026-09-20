@@ -10,11 +10,15 @@ import { loadData } from "../src/server/data";
 import { loadBrand } from "../src/server/settings";
 import { defaultSettings } from "../src/lib/settings";
 import { decryptIntegrationKey } from "../src/server/integration-secrets";
-import { suggestAnamnesis } from "../src/server/anamnesis-service";
-import { generateAnamnesis } from "../src/server/gemini";
+import {
+  suggestAnamnesis,
+  suggestPrescription,
+} from "../src/server/anamnesis-service";
+import { generateAnamnesis, generatePrescription } from "../src/server/gemini";
 vi.mock("../src/server/gemini", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/server/gemini")>()),
   generateAnamnesis: vi.fn(),
+  generatePrescription: vi.fn(),
 }));
 vi.mock("../src/server/access", () => ({
   withAccess:
@@ -28,6 +32,7 @@ vi.mock("../src/server/access", () => ({
         : Promise.resolve(new Response(null, { status: 403 })),
 }));
 import { POST as saveSettings } from "../src/app/api/settings/route";
+import { POST as prescriptionRoute } from "../src/app/api/consultations/[id]/prescription-suggestion/route";
 import { POST as generateRoute } from "../src/app/api/consultations/[id]/anamnesis/route";
 
 const admin = new Pool({ connectionString: process.env.ADMIN_DATABASE_URL });
@@ -40,6 +45,7 @@ const actor = {
   orgId: org,
   role: "admin" as const,
   local: true,
+  isVeterinarian: true,
 };
 const fakeKey = "AQ.fake-key-for-local-tests-only";
 const result = {
@@ -111,9 +117,31 @@ beforeAll(async () => {
       )
     ).id;
   });
+  await admin.query(
+    "INSERT INTO professional_profiles(organization_id,user_id,veterinarian_name,veterinarian_title,crmv) VALUES($1,$2,'Test','Dra.','CRMV-SP 12345')",
+    [org, actor.userId],
+  );
   expect((await settings({ geminiApiKey: fakeKey })).status).toBe(200);
 });
+const rxSuggestion = {
+  transcription: "",
+  items: [
+    {
+      name: "Medicamento fictício",
+      concentration: "",
+      dose: "",
+      route: "",
+      frequency: "",
+      duration: "",
+      quantity: "",
+      instructions: "",
+    },
+  ],
+  instructions: "",
+  warnings: [],
+};
 beforeEach(async () => {
+  vi.mocked(generatePrescription).mockReset().mockResolvedValue(rxSuggestion);
   vi.mocked(generateAnamnesis).mockReset().mockResolvedValue(result);
   await admin.query(
     "UPDATE consultations SET status='draft',revision=0,notes='Original preservado' WHERE id=$1",
@@ -126,6 +154,7 @@ beforeEach(async () => {
 });
 afterAll(async () => {
   for (const table of [
+    "professional_profiles",
     "audit_log",
     "mutations",
     "timeline",
@@ -304,6 +333,103 @@ it("aceita áudio multipart e nega assistentes, excesso de tamanho e arquivos di
   expect(
     (await send(new Blob([new Uint8Array(3 * 1024 * 1024 + 1)]))).status,
   ).toBe(413);
+});
+it("suggests prescriptions only to qualified veterinarians, without saving a prescription", async () => {
+  const count = await scoped(() =>
+    forOrg((db) => db.query("SELECT count(*) FROM prescriptions")),
+  );
+  expect(
+    await scoped(() =>
+      suggestPrescription(consultationId, 0, { text: "Medicamento fictício" }),
+    ),
+  ).toEqual(rxSuggestion);
+  expect(
+    (
+      await scoped(() =>
+        forOrg((db) => db.query("SELECT count(*) FROM prescriptions")),
+      )
+    ).rows,
+  ).toEqual(count.rows);
+  const log = await admin.query(
+    "SELECT action FROM audit_log WHERE organization_id=$1 AND action='ai.prescription.text'",
+    [org],
+  );
+  expect(log.rowCount).toBe(1);
+  await expect(
+    requestIdentity.run({ ...actor, isVeterinarian: false }, () =>
+      suggestPrescription(consultationId, 0, { text: "Teste" }),
+    ),
+  ).rejects.toMatchObject({ status: 403 });
+  await expect(
+    requestIdentity.run({ ...actor, role: "assistant" }, () =>
+      suggestPrescription(consultationId, 0, { text: "Teste" }),
+    ),
+  ).rejects.toMatchObject({ status: 403 });
+  await expect(
+    requestIdentity.run({ ...actor, orgId: otherOrg }, () =>
+      suggestPrescription(consultationId, 0, { text: "Teste" }),
+    ),
+  ).rejects.toMatchObject({ status: 404 });
+  await expect(
+    requestIdentity.run({ ...actor, userId: "not-configured" }, () =>
+      suggestPrescription(consultationId, 0, { text: "Teste" }),
+    ),
+  ).rejects.toMatchObject({ status: 409 });
+  expect(generatePrescription).toHaveBeenCalledTimes(1);
+});
+it("accepts prescription suggestions after consultation completion and shares the clinic AI quota", async () => {
+  await admin.query("UPDATE consultations SET status='completed' WHERE id=$1", [
+    consultationId,
+  ]);
+  await scoped(() => suggestPrescription(consultationId, 0, { text: "Teste" }));
+  await admin.query(
+    "UPDATE clinic_ai_settings SET request_count=30 WHERE organization_id=$1",
+    [org],
+  );
+  await expect(
+    scoped(() => suggestPrescription(consultationId, 0, { text: "Teste" })),
+  ).rejects.toMatchObject({ status: 429 });
+  expect(generatePrescription).toHaveBeenCalledTimes(1);
+});
+it("checks prescription multipart input and cancels stale suggestions without persisting content", async () => {
+  const form = new FormData();
+  form.set("revision", "0");
+  form.set(
+    "audio",
+    new File([Buffer.from("RIFF0000WAVEsynthetic")], "test.wav"),
+  );
+  const request = new Request(
+    "http://localhost/api/consultations/" +
+      consultationId +
+      "/prescription-suggestion",
+    { method: "POST", body: form },
+  );
+  const response = await scoped(() =>
+    prescriptionRoute(request, {
+      params: Promise.resolve({ id: consultationId }),
+    }),
+  );
+  expect(response.status).toBe(200);
+  expect(vi.mocked(generatePrescription).mock.calls[0][1].audio?.mimeType).toBe(
+    "audio/wav",
+  );
+  vi.mocked(generatePrescription).mockImplementationOnce(async () => {
+    await admin.query(
+      "UPDATE consultations SET revision=revision+1 WHERE id=$1",
+      [consultationId],
+    );
+    return rxSuggestion;
+  });
+  await expect(
+    scoped(() => suggestPrescription(consultationId, 0, { text: "Teste" })),
+  ).rejects.toMatchObject({ status: 409 });
+  const config = (
+    await admin.query(
+      "SELECT lease_id FROM clinic_ai_settings WHERE organization_id=$1",
+      [org],
+    )
+  ).rows[0];
+  expect(config.lease_id).toBeNull();
 });
 it("remove a chave sem retornar o segredo e desabilita futuras gerações", async () => {
   const response = await settings({ removeGeminiKey: "true" });

@@ -1,15 +1,25 @@
+import {
+  prescriptionAuthor,
+  requireVeterinarian,
+} from "./professional-profile";
 import { randomUUID } from "node:crypto";
 import { forOrg, AppError } from "./db";
 import { getOrgId } from "./context";
 import { decryptIntegrationKey } from "./integration-secrets";
-import { generateAnamnesis, type AnamnesisInput } from "./gemini";
+import {
+  generateAnamnesis,
+  generatePrescription,
+  type AnamnesisInput,
+} from "./gemini";
 
-export async function suggestAnamnesis(
+async function suggestClinicalDocument<K extends "anamnesis" | "prescription">(
+  kind: K,
   id: string,
   revision: number,
   input: AnamnesisInput,
   signal?: AbortSignal,
 ) {
+  if (kind === "prescription") requireVeterinarian();
   const org = getOrgId(),
     lease = randomUUID();
   const key = await forOrg(async (db) => {
@@ -21,11 +31,13 @@ export async function suggestAnamnesis(
     ).rows[0];
     if (!consultation) throw new AppError("Atendimento não encontrado.", 404);
     if (
-      consultation.status !== "draft" ||
+      (kind === "anamnesis" && consultation.status !== "draft") ||
       consultation.visit_status === "cancelled"
     )
       throw new AppError(
-        "A IA está disponível apenas em atendimentos em andamento.",
+        kind === "prescription"
+          ? "Não é possível gerar uma receita para uma visita cancelada."
+          : "A IA está disponível apenas em atendimentos em andamento.",
         409,
       );
     if (consultation.revision !== revision)
@@ -33,6 +45,7 @@ export async function suggestAnamnesis(
         "O atendimento mudou em outra aba. Recarregue antes de usar a IA.",
         409,
       );
+    if (kind === "prescription") await prescriptionAuthor(db);
     const config = (
       await db.query(
         "SELECT * FROM clinic_ai_settings WHERE organization_id=$1 FOR UPDATE",
@@ -63,17 +76,21 @@ export async function suggestAnamnesis(
     return decrypted;
   });
   try {
-    const result = await generateAnamnesis(key, input, signal);
+    const result =
+      kind === "anamnesis"
+        ? await generateAnamnesis(key, input, signal)
+        : await generatePrescription(key, input, signal);
     await forOrg(async (db) => {
       const current = (
         await db.query(
-          "SELECT status,revision FROM consultations WHERE id=$1",
+          "SELECT c.status,c.revision,v.status AS visit_status FROM consultations c JOIN visits v ON v.id=c.visit_id WHERE c.id=$1",
           [id],
         )
       ).rows[0];
       if (
         !current ||
-        current.status !== "draft" ||
+        (kind === "anamnesis" && current.status !== "draft") ||
+        current.visit_status === "cancelled" ||
         current.revision !== revision
       )
         throw new AppError(
@@ -82,7 +99,7 @@ export async function suggestAnamnesis(
         );
       await db.query(
         "INSERT INTO audit_log(organization_id,action,entity_id) VALUES($1,$2,$3)",
-        [org, input.audio ? "ai.anamnesis.audio" : "ai.anamnesis.text", id],
+        [org, `ai.${kind}.${input.audio ? "audio" : "text"}`, id],
       );
     });
     return result;
@@ -95,3 +112,16 @@ export async function suggestAnamnesis(
     );
   }
 }
+
+export const suggestAnamnesis = (
+  id: string,
+  revision: number,
+  input: AnamnesisInput,
+  signal?: AbortSignal,
+) => suggestClinicalDocument("anamnesis", id, revision, input, signal);
+export const suggestPrescription = (
+  id: string,
+  revision: number,
+  input: AnamnesisInput,
+  signal?: AbortSignal,
+) => suggestClinicalDocument("prescription", id, revision, input, signal);
