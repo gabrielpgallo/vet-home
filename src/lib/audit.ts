@@ -1,3 +1,5 @@
+import { addressFields } from "./address";
+import { formatInput } from "./input-formats";
 import { historicalVitalFields } from "./domain";
 
 export const auditEntities = {
@@ -50,6 +52,7 @@ export const auditFields: Record<string, string> = {
   phone: "Telefone",
   email: "E-mail",
   address: "Endereço",
+  address_details: "Detalhes do endereço",
   document: "Documento",
   tutor_id: "Tutor (ID)",
   patient_id: "Paciente (ID)",
@@ -144,6 +147,25 @@ export function auditValue(field: string, value: unknown): string {
         return `${label}: ${formatted}${unit ? " " + unit : ""}`;
       });
     return measurements.join("\n") || "—";
+  }
+  if (
+    field === "address_details" &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
+    const details = value as Record<string, unknown>;
+    const lines = [["postalCode", "CEP"], ...addressFields].flatMap(
+      ([key, label]) => {
+        const text =
+          typeof details[key] === "string" ? details[key].trim() : "";
+        return text
+          ? [
+              `${label}: ${key === "postalCode" ? formatInput("cep", text) : text}`,
+            ]
+          : [];
+      },
+    );
+    return lines.join("\n") || "—";
   }
   if (typeof value === "object") return JSON.stringify(value, null, 2);
   const labels: Record<string, string> = {

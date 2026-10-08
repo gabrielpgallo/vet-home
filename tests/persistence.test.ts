@@ -100,6 +100,99 @@ afterAll(async () => {
   await pool.end();
 });
 describe.sequential("persistência e regras do atendimento", () => {
+  it("persiste endereço por campos, mantém compatibilidade e não altera visitas anteriores", async () => {
+    const data = {
+      name: "Tutor CEP",
+      phone: "",
+      email: "",
+      address: "Texto que o servidor deve recompor",
+    };
+    const addressDetails = {
+      postalCode: "01001-000",
+      street: "Praça da Sé",
+      number: "120",
+      complement: "apto 2",
+      neighborhood: "Sé",
+      city: "São Paulo",
+      state: "sp",
+    };
+    await execute({
+      type: "tutor.update",
+      id: tutor,
+      data: { ...data, addressDetails },
+    });
+    const saved = (await loadData()).tutors.find((t) => t.id === tutor)!;
+    expect(saved.addressDetails).toEqual({
+      ...addressDetails,
+      postalCode: "01001000",
+      state: "SP",
+    });
+    expect(saved.address).toBe(
+      "Praça da Sé, 120 · apto 2 · Sé · São Paulo / SP · CEP 01001-000",
+    );
+    expect((await loadData()).visits.find((v) => v.id === visit)?.address).toBe(
+      "Rua A",
+    );
+    const log = (
+      await admin.query(
+        "SELECT after_data FROM change_log WHERE entity_id=$1 AND entity_type='tutors' ORDER BY id DESC LIMIT 1",
+        [tutor],
+      )
+    ).rows[0];
+    expect(log.after_data.address_details).toEqual(saved.addressDetails);
+    await execute({
+      type: "tutor.update",
+      id: tutor,
+      data: { ...data, address: saved.address },
+    });
+    expect(
+      (await loadData()).tutors.find((t) => t.id === tutor)?.addressDetails,
+    ).toEqual(saved.addressDetails);
+    await expect(
+      execute({
+        type: "tutor.update",
+        id: tutor,
+        data: {
+          ...data,
+          addressDetails: { ...addressDetails, postalCode: "123" },
+        },
+      }),
+    ).rejects.toThrow("CEP");
+    await execute({
+      type: "tutor.update",
+      id: tutor,
+      data: { ...data, address: "Novo endereço livre" },
+    });
+    expect(
+      (await loadData()).tutors.find((t) => t.id === tutor)?.addressDetails,
+    ).toBeNull();
+    const created = await execute({
+      type: "tutor.create",
+      data: { ...data, addressDetails },
+      patientNames: [],
+    });
+    try {
+      expect(
+        (await loadData()).tutors.find((t) => t.id === created.id)
+          ?.addressDetails?.postalCode,
+      ).toBe("01001000");
+      await execute({
+        type: "tutor.update",
+        id: created.id,
+        data: { ...data, address: "Rua manual", addressDetails: null },
+      });
+      expect(
+        (await loadData()).tutors.find((t) => t.id === created.id)
+          ?.addressDetails,
+      ).toBeNull();
+    } finally {
+      await admin.query(
+        "DELETE FROM tutors WHERE id=$1 AND organization_id=$2",
+        [created.id, org],
+      );
+    }
+  });
+
   it("persiste o documento do tutor, preserva em clientes antigos e permite limpar", async () => {
     const data = { name: "Teste", phone: "", email: "", address: "Rua A" };
     await expect(

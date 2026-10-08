@@ -1,5 +1,6 @@
 import { z } from "zod";
 export type InputMask =
+  | "cep"
   | "cpf"
   | "cnpj"
   | "document"
@@ -109,7 +110,14 @@ export const sipeagroSchema = z
     (v) => !v || /^(?:MV\d{11}|\d+(?:[/-](?:\d+|[A-Z]{2}))?)$/.test(v),
     "Confira o registro MAPA/SIPEAGRO. Ex.: MV00000000000.",
   );
+export const cepSchema = z
+  .string()
+  .trim()
+  .max(12)
+  .transform((v) => v.replace(/[\s-]/g, ""))
+  .refine((v) => !v || /^\d{8}$/.test(v), "Informe um CEP com 8 dígitos.");
 export const maskedSchemas = {
+  cep: cepSchema,
   cpf: cpfSchema,
   cnpj: cnpjSchema,
   document: documentSchema,
@@ -123,6 +131,10 @@ function pattern(value: string, separators: Record<number, string>) {
     .join("");
 }
 export function formatInput(kind: InputMask, value: string): string {
+  if (kind === "cep") {
+    const raw = value.trim().replace(/[\s-]/g, "");
+    return /^\d{0,8}$/.test(raw) ? pattern(raw, { 5: "-" }) : value;
+  }
   if (kind === "money") {
     const text = value.trim().replace(/^R\$\s*/i, "");
     if (/^\d{1,3}(?:\.\d{3})+(?:,\d{0,2})?$/.test(text))

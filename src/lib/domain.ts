@@ -1,3 +1,4 @@
+import { tutorAddressSchema } from "./address";
 import { phoneSchema, documentSchema } from "./input-formats";
 import { expenseSchema } from "./finance-schema";
 import { z } from "zod";
@@ -98,6 +99,7 @@ export const tutorSchema = z
     email: z.union([z.literal(""), z.email()]),
     address: z.string().trim().min(1).max(500),
     document: documentSchema.optional(),
+    addressDetails: tutorAddressSchema.nullable().optional(),
   })
   .strict();
 export const patientSchema = z

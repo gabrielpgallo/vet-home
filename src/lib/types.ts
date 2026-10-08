@@ -5,6 +5,7 @@ export interface Tutor {
   phone: string;
   email: string;
   address: string;
+  addressDetails?: import("./address").TutorAddress | null;
   document?: string;
 }
 export interface Patient {

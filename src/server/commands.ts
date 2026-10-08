@@ -1,3 +1,4 @@
+import { formatAddress } from "@/lib/address";
 import { getOrgId, requestIdentity } from "@/server/context";
 import { randomUUID, createHash } from "node:crypto";
 import type { PoolClient } from "pg";
@@ -165,8 +166,17 @@ async function execute(
       const id = randomUUID(),
         d = cmd.data;
       await db.query(
-        "INSERT INTO tutors(id,organization_id,name,phone,email,address,document) VALUES($1,$2,$3,$4,$5,$6,$7)",
-        [id, getOrgId(), d.name, d.phone, d.email, d.address, d.document ?? ""],
+        "INSERT INTO tutors(id,organization_id,name,phone,email,address,document,address_details) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+        [
+          id,
+          getOrgId(),
+          d.name,
+          d.phone,
+          d.email,
+          d.addressDetails ? formatAddress(d.addressDetails) : d.address,
+          d.document ?? "",
+          d.addressDetails ?? null,
+        ],
       );
       for (const name of cmd.patientNames)
         await db.query(
@@ -176,11 +186,27 @@ async function execute(
       return { id };
     }
     case "tutor.update": {
-      await row(db, "tutors", cmd.id);
+      const previous = await row(db, "tutors", cmd.id);
       const d = cmd.data;
+      // Older clients preserve details when editing other tutor fields. A changed
+      // free-text address invalidates old parts instead of showing stale data.
+      const details =
+        d.addressDetails === undefined
+          ? d.address === previous.address
+            ? previous.address_details
+            : null
+          : d.addressDetails;
       await db.query(
-        "UPDATE tutors SET name=$2,phone=$3,email=$4,address=$5,document=COALESCE($6::text,document) WHERE id=$1",
-        [cmd.id, d.name, d.phone, d.email, d.address, d.document ?? null],
+        "UPDATE tutors SET name=$2,phone=$3,email=$4,address=$5,document=COALESCE($6::text,document),address_details=$7 WHERE id=$1",
+        [
+          cmd.id,
+          d.name,
+          d.phone,
+          d.email,
+          d.addressDetails ? formatAddress(d.addressDetails) : d.address,
+          d.document ?? null,
+          details,
+        ],
       );
       return { id: cmd.id };
     }
