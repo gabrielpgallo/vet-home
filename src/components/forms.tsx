@@ -19,6 +19,8 @@ import type {
   Tutor,
   Visit,
 } from "@/lib/types";
+import { AddressFields } from "./address-fields";
+import { emptyAddress, formatAddress, tutorAddressSchema } from "@/lib/address";
 import { MaskedInput } from "./masked-input";
 import { formatInput, phoneMatches, type InputMask } from "@/lib/input-formats";
 export type Mutate = (
@@ -61,17 +63,19 @@ export function AsyncForm({
   onSubmit,
   submit = "Salvar",
   secondarySubmit,
+  submitDisabled = false,
 }: {
   children: ReactNode;
   onSubmit: (data: FormData, action: "primary" | "secondary") => Promise<void>;
   submit?: string;
   secondarySubmit?: string;
+  submitDisabled?: boolean;
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function send(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || submitDisabled) return;
     setBusy(true);
     setError("");
     const d = new FormData(e.currentTarget);
@@ -98,7 +102,12 @@ export function AsyncForm({
       )}
       <div className="form-actions">
         {secondarySubmit && (
-          <button type="submit" name="action" value="secondary" disabled={busy}>
+          <button
+            type="submit"
+            name="action"
+            value="secondary"
+            disabled={busy || submitDisabled}
+          >
             {secondarySubmit}
           </button>
         )}
@@ -107,7 +116,7 @@ export function AsyncForm({
           name="action"
           value="primary"
           className="primary"
-          disabled={busy}
+          disabled={busy || submitDisabled}
         >
           {busy ? "Salvando…" : submit}
         </button>
@@ -124,14 +133,30 @@ export function TutorForm({
   mutate: Mutate;
   onDone: (id: string) => void;
 }) {
+  const [addressDetails, setAddressDetails] = useState(
+    () => tutor?.addressDetails || emptyAddress(),
+  );
+  const [structured, setStructured] = useState(
+    !tutor || !!tutor.addressDetails,
+  );
+  const [legacyAddress, setLegacyAddress] = useState(tutor?.address || "");
+  const [lookingUp, setLookingUp] = useState(false);
   return (
     <AsyncForm
+      submitDisabled={lookingUp}
       onSubmit={async (d) => {
+        const parsedAddress = structured
+          ? tutorAddressSchema.safeParse(addressDetails)
+          : null;
+        if (parsedAddress && !parsedAddress.success)
+          throw new Error(parsedAddress.error.issues[0].message);
+        const details = parsedAddress?.success ? parsedAddress.data : null;
         const data = {
           name: str(d, "name"),
           phone: str(d, "phone"),
           email: str(d, "email"),
-          address: str(d, "address"),
+          address: details ? formatAddress(details) : legacyAddress,
+          addressDetails: details,
           document: str(d, "document"),
         };
         const r = await mutate(
@@ -165,12 +190,6 @@ export function TutorForm({
           value={tutor?.document}
           maxLength={30}
         />
-        <Field
-          label="Endereço"
-          name="address"
-          value={tutor?.address}
-          required
-        />
         {!tutor && (
           <Field
             label="Nome dos animais (separados por vírgula)"
@@ -179,6 +198,50 @@ export function TutorForm({
           />
         )}
       </div>
+      <section className="tutor-address">
+        <div className="row between wrap">
+          <h3>Endereço</h3>
+          {tutor && !tutor.addressDetails && (
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                setStructured(!structured);
+                setLookingUp(false);
+              }}
+            >
+              {structured ? "Manter endereço anterior" : "Preencher por CEP"}
+            </button>
+          )}
+        </div>
+        {structured ? (
+          <>
+            {tutor && !tutor.addressDetails && (
+              <p className="hint address-legacy-reference">
+                Endereço anterior: {legacyAddress}. Confira número e complemento
+                ao preencher os campos abaixo.
+              </p>
+            )}
+            <AddressFields
+              value={addressDetails}
+              onChange={setAddressDetails}
+              onBusyChange={setLookingUp}
+            />
+          </>
+        ) : (
+          <label>
+            Endereço atual
+            <textarea
+              name="address"
+              value={legacyAddress}
+              onChange={(e) => setLegacyAddress(e.target.value)}
+              maxLength={500}
+              required
+              rows={2}
+            />
+          </label>
+        )}
+      </section>
       <p className="hint">
         Nome e endereço bastam para começar. Complete os demais dados quando
         precisar.

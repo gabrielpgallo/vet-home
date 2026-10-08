@@ -52,7 +52,7 @@ export function MaskedInput({
         props.inputMode ??
         (mask === "phone"
           ? "tel"
-          : mask === "cpf"
+          : mask === "cpf" || mask === "cep"
             ? "numeric"
             : mask === "money"
               ? "decimal"
