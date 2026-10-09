@@ -16,6 +16,14 @@ valores antes/depois. O e-mail do responsável é preservado mesmo que a conta
 seja removida posteriormente. Operações fora do contexto de uma sessão são
 identificadas como Sistema; desenvolvimento local aparece como tal.
 
+A migration `020_encounter_corrections.sql` inclui motivo e identificador da
+requisição. Correções de atendimentos concluídos, aplicações, recebimentos e
+documentos exigem uma justificativa. Ela aparece nos detalhes da alteração.
+Substituições preservam o registro original e criam outro vinculado a ele;
+cancelamentos são alterações de status. O motivo e o identificador são definidos
+pelo servidor na mesma transação da mudança. PDFs congelados e assinados não
+entram nos snapshots de auditoria.
+
 A captura é transacional: rollback desfaz também o histórico. Atualizações sem
 mudança nos campos acompanhados não criam entradas. Repetir uma requisição
 idempotente não duplica registros. Não existe reconstrução retroativa: mudanças

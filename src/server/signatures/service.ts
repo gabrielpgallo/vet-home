@@ -39,6 +39,13 @@ async function source(db: PoolClient, id: string) {
     )
   ).rows[0];
   if (!rx) throw new AppError("Receita não encontrada.", 404);
+  if (rx.record_status !== "active")
+    throw new AppError(
+      "Esta receita foi substituída ou cancelada. Assine a versão atual.",
+      409,
+    );
+  // Downloading a draft snapshot must not invalidate an otherwise unchanged signing attempt.
+  delete rx.issued_pdf;
   await db.query(
     "SELECT organization_id FROM practice_settings WHERE organization_id=$1 FOR SHARE",
     [getOrgId()],

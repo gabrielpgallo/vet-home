@@ -21,11 +21,14 @@ export interface Patient {
 export interface Visit {
   id: string;
   tutorId: string;
-  startsAt: string;
+  startsAt: string | null;
+  origin?: "scheduled" | "direct";
+  performedOn?: string | null;
+  revision?: number;
   durationMinutes: number;
   address: string;
   baseCents: number;
-  status: "scheduled" | "completed" | "cancelled";
+  status: "draft" | "scheduled" | "completed" | "cancelled";
   totalCents: number;
   receivedCents: number;
 }
@@ -35,6 +38,10 @@ export interface VisitPatient {
   reason: string;
 }
 export interface Consultation {
+  occurredOn?: string | null;
+  occurredTime?: string | null;
+  correctedAt?: string | null;
+  correctedBy?: string | null;
   id: string;
   visitId: string;
   patientId: string;
@@ -54,6 +61,8 @@ export interface Product {
   active: boolean;
 }
 export interface Application {
+  revision?: number;
+  status?: "active" | "voided";
   id: string;
   consultationId: string;
   productId: string;
@@ -68,6 +77,8 @@ export interface Application {
   createdAt: string;
 }
 export interface Prescription {
+  replacesId?: string | null;
+  recordStatus?: "active" | "replaced" | "voided";
   prescriberId?: string | null;
   prescriber?: Omit<
     import("./professional-profile").ProfessionalProfile,
@@ -82,6 +93,8 @@ export interface Prescription {
   createdAt: string;
 }
 export interface Exam {
+  replacesId?: string | null;
+  recordStatus?: "active" | "replaced" | "voided";
   id: string;
   patientId: string;
   consultationId: string | null;
@@ -116,6 +129,9 @@ export interface TimelineEvent {
   occurredAt: string;
 }
 export interface Payment {
+  paidOn?: string;
+  status?: "active" | "voided";
+  replacesId?: string | null;
   id: string;
   visitId: string;
   amountCents: number;

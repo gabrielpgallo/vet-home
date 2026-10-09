@@ -35,6 +35,7 @@ const grants: Record<Role, readonly Permission[]> = {
 export const can = (role: Role, permission: Permission) =>
   grants[role]?.includes(permission) ?? false;
 export function commandPermission(type: string): Permission | null {
+  if (type === "visit.correct") return "payments.write";
   const prefix = type.split(".")[0];
   return (
     (

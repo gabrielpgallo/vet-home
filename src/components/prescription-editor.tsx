@@ -2,7 +2,12 @@
 import { useRef, useState } from "react";
 import { Sparkles, PenLine, Undo2 } from "lucide-react";
 import type { RxItem } from "@/lib/domain";
-import type { Patient, Consultation, Bootstrap } from "@/lib/types";
+import type {
+  Patient,
+  Consultation,
+  Bootstrap,
+  Prescription,
+} from "@/lib/types";
 import {
   prescriptionFields,
   prescriptionMissingFields,
@@ -21,12 +26,14 @@ const emptyRx = (): RxItem => ({
 });
 export function PrescriptionEditor({
   patient,
+  original,
   consultation,
   data,
   mutate,
   onDone,
   onDirty,
 }: {
+  original?: Prescription;
   patient: Patient;
   consultation: Consultation;
   data: Bootstrap;
@@ -35,12 +42,15 @@ export function PrescriptionEditor({
   onDirty: () => void;
 }) {
   const contextRef = useRef<HTMLParagraphElement>(null);
+  const [reason, setReason] = useState("");
   const [validationError, setValidationError] = useState("");
   function returnToTop() {
     contextRef.current?.closest("dialog")?.scrollTo({ top: 0 });
   }
-  const [items, setItems] = useState<RxItem[]>([emptyRx()]),
-    [notes, setNotes] = useState(""),
+  const [items, setItems] = useState<RxItem[]>(
+      original?.items.map((i) => ({ ...i })) || [emptyRx()],
+    ),
+    [notes, setNotes] = useState(original?.instructions || ""),
     [preview, setPreview] = useState(false);
   const [aiOpened, setAiOpened] = useState(false),
     [aiProcessing, setAiProcessing] = useState(false);
@@ -66,6 +76,12 @@ export function PrescriptionEditor({
         <strong>{patient.name}</strong>
         <span>{data.tutors.find((t) => t.id === patient.tutorId)?.name}</span>
       </p>
+      {original && (
+        <p className="notice">
+          Você está preparando uma nova versão desta receita. O original
+          permanece no histórico, inclusive sua assinatura.
+        </p>
+      )}
       {!preview && (
         <nav className="ai-steps" aria-label="Forma de preencher a receita">
           <button
@@ -136,17 +152,44 @@ export function PrescriptionEditor({
         )}
         {preview ? (
           <AsyncForm
-            submit="Salvar rascunho"
+            submit={original ? "Salvar nova versão" : "Salvar rascunho"}
             onSubmit={async () => {
-              await mutate({
-                type: "prescription.create",
-                consultationId: consultation.id,
-                items,
-                instructions: notes,
-              });
+              await mutate(
+                original
+                  ? {
+                      type: "prescription.replace",
+                      id: original.id,
+                      reason,
+                      items,
+                      instructions: notes,
+                    }
+                  : {
+                      type: "prescription.create",
+                      consultationId: consultation.id,
+                      items,
+                      instructions: notes,
+                    },
+              );
               onDone();
             }}
           >
+            {original && (
+              <label>
+                Motivo da correção
+                <textarea
+                  required
+                  minLength={3}
+                  maxLength={2000}
+                  rows={2}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+                <span className="hint">
+                  O documento anterior será preservado. Esta nova versão
+                  precisará de uma nova assinatura.
+                </span>
+              </label>
+            )}
             <section className="panel paper">
               <span className="badge">Rascunho · sem assinatura</span>
               <h2>Prescrição</h2>

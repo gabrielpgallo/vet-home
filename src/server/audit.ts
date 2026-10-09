@@ -58,7 +58,7 @@ export async function readAudit(params: URLSearchParams) {
     if (f.actor) add("strpos(lower(actor),lower(?)) > 0", f.actor);
     const result = await db.query<AuditEntry>(
       `
-      SELECT id,created_at,actor,entity_type,entity_id,operation,changed_fields,
+      SELECT id,created_at,actor,reason,request_id,entity_type,entity_id,operation,changed_fields,
         COALESCE(after_data->>'name',before_data->>'name',after_data->>'product_name',before_data->>'product_name',
           after_data->>'description',before_data->>'description',after_data->>'company_name',before_data->>'company_name',
           after_data->>'title',before_data->>'title',after_data->>'signer_name',before_data->>'signer_name',after_data->>'veterinarian_name',before_data->>'veterinarian_name','') AS label

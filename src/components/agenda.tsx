@@ -5,6 +5,7 @@ import { calendarPeriod, shiftPeriod, type CalendarView } from "@/lib/calendar";
 import type { Bootstrap, Visit } from "@/lib/types";
 const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const status = {
+  draft: "Rascunho",
   scheduled: "Agendada",
   completed: "Concluída",
   cancelled: "Cancelada",
@@ -27,13 +28,16 @@ export function Agenda({
   const period = calendarPeriod(day, view),
     today = dateKey();
   const visits = data.visits.filter((v) => {
+    if (v.origin === "direct" || !v.startsAt) return false;
     const d = dateKey(v.startsAt);
     return d >= period.start && d <= period.end && v.status !== "cancelled";
   });
   const visitsFor = (d: string) =>
     data.visits
-      .filter((v) => dateKey(v.startsAt) === d)
-      .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+      .filter(
+        (v) => v.origin !== "direct" && v.startsAt && dateKey(v.startsAt) === d,
+      )
+      .sort((a, b) => (a.startsAt || "").localeCompare(b.startsAt || ""));
   const tutor = (v: Visit) =>
     data.tutors.find((t) => t.id === v.tutorId)?.name || "";
   const patients = (v: Visit) =>

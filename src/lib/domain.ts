@@ -57,28 +57,36 @@ export const money = (cents: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
     cents / 100,
   );
-export const dateLabel = (value: string) =>
-  new Date(
-    value.length === 10 ? value + "T12:00:00-03:00" : value,
-  ).toLocaleDateString("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-export const dateKey = (value: Date | string = new Date()) =>
-  new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(value));
-export const timeLabel = (value: string) =>
-  new Date(value).toLocaleTimeString("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+export const dateLabel = (value: string | null | undefined) =>
+  !value
+    ? "Data a definir"
+    : new Date(
+        value.length === 10 ? value + "T12:00:00-03:00" : value,
+      ).toLocaleDateString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+export const dateKey = (value: Date | string | null = new Date()) =>
+  value === null
+    ? ""
+    : typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? value
+      : new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/Sao_Paulo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(value));
+export const timeLabel = (value: string | null) =>
+  !value
+    ? "—"
+    : new Date(value).toLocaleTimeString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
 const id = z.string().uuid(),
   short = z.string().trim().max(200),
   text = z.string().max(50000),
@@ -133,7 +141,79 @@ export const rxItemSchema = z
     instructions: z.string().max(2000),
   })
   .strict();
+const revision = z.number().int().min(0);
+const reason = z
+  .string()
+  .trim()
+  .min(3, "Informe o motivo da correção (mínimo 3 caracteres).")
+  .max(2000);
+const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 export const commandSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("consultation.create"), patientId: id }).strict(),
+  z
+    .object({
+      type: z.literal("visit.correct"),
+      id,
+      revision,
+      reason: reason.optional(),
+      baseCents: cents,
+      address: z.string().trim().min(1).max(500),
+      performedOn: date.nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("application.correct"),
+      id,
+      revision,
+      reason,
+      productId: id,
+      quantityMilli: z.number().int().min(1).max(1_000_000_000),
+      unitSaleCents: cents,
+      batch: short,
+      route: short,
+    })
+    .strict(),
+  z
+    .object({ type: z.literal("application.void"), id, revision, reason })
+    .strict(),
+  z
+    .object({
+      type: z.literal("payment.correct"),
+      id,
+      reason,
+      amountCents: cents.min(1),
+      method: z.enum(paymentMethods),
+      paidOn: date,
+    })
+    .strict(),
+  z.object({ type: z.literal("payment.void"), id, reason }).strict(),
+  z
+    .object({
+      type: z.literal("prescription.replace"),
+      id,
+      reason,
+      items: z.array(rxItemSchema).min(1).max(30),
+      instructions: z.string().max(5000),
+    })
+    .strict(),
+  z.object({ type: z.literal("prescription.void"), id, reason }).strict(),
+  z
+    .object({
+      type: z.literal("exam.replace"),
+      id,
+      reason,
+      name: short.min(1),
+      mode: z.enum([
+        "Coleta pela veterinária",
+        "Encaminhamento a outro profissional",
+      ]),
+      partner: short,
+      notes: z.string().max(5000),
+      date,
+    })
+    .strict(),
+  z.object({ type: z.literal("exam.void"), id, reason }).strict(),
   z.object({ type: z.literal("expense.create"), data: expenseSchema }).strict(),
   z
     .object({
@@ -191,6 +271,9 @@ export const commandSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("consultation.save"),
       id,
+      occurredOn: date.nullable().optional(),
+      occurredTime: time.nullable().optional(),
+      reason: reason.optional(),
       revision: z.number().int().min(0),
       notes: text,
       vitals: z
@@ -209,6 +292,7 @@ export const commandSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("application.create"),
+      reason: reason.optional(),
       consultationId: id,
       productId: id,
       quantityMilli: z.number().int().min(1).max(1_000_000_000),
@@ -253,6 +337,7 @@ export const commandSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("payment.create"),
+      paidOn: date.optional(),
       visitId: id,
       amountCents: cents.min(1),
       method: z.enum(paymentMethods),
@@ -263,6 +348,8 @@ export type Command = z.infer<typeof commandSchema>;
 export type RxItem = z.infer<typeof rxItemSchema>;
 export const uploadSchema = z
   .object({
+    replacesId: id.optional(),
+    reason: reason.optional(),
     patientId: id,
     consultationId: id.nullable(),
     requestId: id.nullable(),
