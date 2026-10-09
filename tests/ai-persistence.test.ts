@@ -230,7 +230,7 @@ it("gera uma sugestão sem alterar o prontuário ou salvar texto na auditoria", 
   });
   expect(JSON.stringify(audits)).not.toContain(source);
 });
-it("bloqueia atendimento alheio, concluído e revisão desatualizada antes de chamar o Gemini", async () => {
+it("bloqueia atendimento alheio e revisão desatualizada antes de chamar o Gemini", async () => {
   await expect(
     requestIdentity.run({ ...actor, orgId: otherOrg }, () =>
       suggestAnamnesis(consultationId, 0, { text: "Teste" }),
@@ -239,13 +239,23 @@ it("bloqueia atendimento alheio, concluído e revisão desatualizada antes de ch
   await expect(
     scoped(() => suggestAnamnesis(consultationId, 2, { text: "Teste" })),
   ).rejects.toMatchObject({ status: 409 });
+  expect(generateAnamnesis).not.toHaveBeenCalled();
+});
+it("permite uma sugestão de IA para correção, sem alterar o atendimento concluído", async () => {
   await admin.query("UPDATE consultations SET status='completed' WHERE id=$1", [
     consultationId,
   ]);
-  await expect(
-    scoped(() => suggestAnamnesis(consultationId, 0, { text: "Teste" })),
-  ).rejects.toMatchObject({ status: 409 });
-  expect(generateAnamnesis).not.toHaveBeenCalled();
+  await scoped(() =>
+    suggestAnamnesis(consultationId, 0, { text: "Teste de correção" }),
+  );
+  const c = (await scoped(() => loadData())).consultations.find(
+    (c) => c.id === consultationId,
+  )!;
+  expect(c).toMatchObject({
+    status: "completed",
+    notes: "Original preservado",
+    revision: 0,
+  });
 });
 it("limita cota e concorrência e libera a reserva após falha", async () => {
   await admin.query(

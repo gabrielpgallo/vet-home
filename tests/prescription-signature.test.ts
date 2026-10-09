@@ -25,6 +25,7 @@ import {
   readProfessionalProfile,
 } from "../src/server/professional-profile";
 import { runCommand } from "../src/server/commands";
+import { documentPdf } from "../src/server/issued-documents";
 import { defaultSettings } from "../src/lib/settings";
 import { requestIdentity } from "../src/server/context";
 import { forOrg, pool } from "../src/server/db";
@@ -475,4 +476,78 @@ it("does not guess the author of a historical prescription", async () => {
       }),
     ),
   ).rejects.toThrow("anterior ao cadastro de autoria");
+});
+
+it("replaces a signed prescription without changing its signed bytes or transferring its signature", async () => {
+  const original = await act(() =>
+    forOrg((db) => documentPdf(db, "prescription", rx)),
+  );
+  await expect(
+    act(() =>
+      forOrg((db) =>
+        db.query(
+          "UPDATE prescriptions SET instructions='Tampered' WHERE id=$1",
+          [rx],
+        ),
+      ),
+    ),
+  ).rejects.toThrow("immutable");
+  const replacement = await act(() =>
+    runCommand(
+      {
+        type: "prescription.replace",
+        id: rx,
+        reason: "Corrigir instruções da receita de teste",
+        instructions: "Nova versão de teste sem validade clínica",
+        items: [
+          {
+            name: "Item corrigido",
+            concentration: "Teste",
+            route: "Oral",
+            quantity: "1",
+            dose: "Teste",
+            frequency: "Teste",
+            duration: "Teste",
+            instructions: "",
+          },
+        ],
+      },
+      randomUUID(),
+    ),
+  );
+  expect(
+    await act(() => forOrg((db) => documentPdf(db, "prescription", rx))),
+  ).toEqual(original);
+  const records = (
+    await admin.query(
+      "SELECT id,record_status,replaces_id FROM prescriptions WHERE id=ANY($1::uuid[])",
+      [[rx, replacement.id]],
+    )
+  ).rows;
+  expect(records.find((r) => r.id === rx).record_status).toBe("replaced");
+  expect(records.find((r) => r.id === replacement.id)).toMatchObject({
+    record_status: "active",
+    replaces_id: rx,
+  });
+  expect(
+    (
+      await admin.query(
+        "SELECT id FROM prescription_signatures WHERE prescription_id=$1",
+        [replacement.id],
+      )
+    ).rows,
+  ).toHaveLength(0);
+  await expect(
+    act(() =>
+      preparePrescription(rx, {
+        certificate: cert.leaf.toString("base64"),
+        chain: [cert.root.toString("base64")],
+      }),
+    ),
+  ).rejects.toThrow("substituída");
+  const unsigned = await act(() =>
+    forOrg((db) => documentPdf(db, "prescription", replacement.id)),
+  );
+  expect(unsigned.equals(original)).toBe(false);
+  expect(unsigned.toString("latin1")).not.toContain("ETSI.CAdES.detached");
 });
