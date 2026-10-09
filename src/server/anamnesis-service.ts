@@ -30,14 +30,11 @@ async function suggestClinicalDocument<K extends "anamnesis" | "prescription">(
       )
     ).rows[0];
     if (!consultation) throw new AppError("Atendimento não encontrado.", 404);
-    if (
-      (kind === "anamnesis" && consultation.status !== "draft") ||
-      consultation.visit_status === "cancelled"
-    )
+    if (consultation.visit_status === "cancelled")
       throw new AppError(
         kind === "prescription"
           ? "Não é possível gerar uma receita para uma visita cancelada."
-          : "A IA está disponível apenas em atendimentos em andamento.",
+          : "Não é possível gerar anamnese para uma visita cancelada.",
         409,
       );
     if (consultation.revision !== revision)
@@ -89,7 +86,6 @@ async function suggestClinicalDocument<K extends "anamnesis" | "prescription">(
       ).rows[0];
       if (
         !current ||
-        (kind === "anamnesis" && current.status !== "draft") ||
         current.visit_status === "cancelled" ||
         current.revision !== revision
       )

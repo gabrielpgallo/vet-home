@@ -5,7 +5,7 @@ import { historicalVitalFields } from "./domain";
 export const auditEntities = {
   tutors: "Tutores",
   patients: "Pacientes",
-  visits: "Agenda",
+  visits: "Visitas / cobranças",
   visit_patients: "Pacientes da visita",
   consultations: "Atendimentos",
   applications: "Aplicações",
@@ -30,6 +30,8 @@ export type AuditEntry = {
   id: string;
   created_at: string;
   actor: string;
+  reason?: string | null;
+  request_id?: string | null;
   entity_type: keyof typeof auditEntities;
   entity_id: string;
   operation: keyof typeof auditOperations;
@@ -39,6 +41,11 @@ export type AuditEntry = {
   after_data?: Record<string, unknown> | null;
 };
 export const auditFields: Record<string, string> = {
+  performed_on: "Data de competência",
+  occurred_time: "Horário do atendimento",
+  origin: "Origem",
+  record_status: "Situação do documento",
+  replaces_id: "Registro original (ID)",
   prescription_id: "Receita (ID)",
   user_id: "Usuário (ID)",
   prescriber_id: "Profissional emissor (ID)",
@@ -174,11 +181,16 @@ export function auditValue(field: string, value: unknown): string {
     cancelled: "Cancelada",
     draft: "Rascunho / em atendimento",
     active: "Ativo",
+    replaced: "Substituído",
+    direct: "Atendimento avulso",
     voided: "Cancelado",
     order: "Solicitação",
     result: "Resultado",
   };
-  return field === "status" || field === "kind"
+  return field === "status" ||
+    field === "kind" ||
+    field === "record_status" ||
+    field === "origin"
     ? labels[String(value)] || String(value)
     : String(value);
 }

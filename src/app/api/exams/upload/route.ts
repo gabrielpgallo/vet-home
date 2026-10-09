@@ -44,6 +44,29 @@ async function handlePOST(req: Request) {
           throw new AppError("Requisição já utilizada.", 409);
         return old.response;
       }
+      await db.query(
+        "SELECT set_config('app.change_reason',$1,true),set_config('app.request_id',$2,true)",
+        [d.reason || "", requestId],
+      );
+      if (d.replacesId) {
+        if (!d.reason) throw new AppError("Informe o motivo da correção.");
+        const old = (
+          await db.query("SELECT * FROM exams WHERE id=$1 FOR UPDATE", [
+            d.replacesId,
+          ])
+        ).rows[0];
+        if (!old || old.kind !== "result" || old.patient_id !== d.patientId)
+          throw new AppError("Resultado não encontrado.", 404);
+        if (old.record_status !== "active")
+          throw new AppError(
+            "Resultado já corrigido ou cancelado. Recarregue a tela.",
+            409,
+          );
+        await db.query(
+          "UPDATE exams SET record_status='replaced' WHERE id=$1",
+          [old.id],
+        );
+      }
       await checkPatientConsultation(db, d.patientId, d.consultationId);
       if (d.requestId) {
         const order = (
@@ -73,7 +96,7 @@ async function handlePOST(req: Request) {
         ],
       );
       await db.query(
-        "INSERT INTO exams(id,organization_id,patient_id,consultation_id,request_id,kind,name,notes,attachment_id,occurred_on) VALUES($1,$2,$3,$4,$5,'result',$6,$7,$8,$9)",
+        "INSERT INTO exams(id,organization_id,patient_id,consultation_id,request_id,kind,name,notes,attachment_id,occurred_on,replaces_id) VALUES($1,$2,$3,$4,$5,'result',$6,$7,$8,$9,$10)",
         [
           id,
           getOrgId(),
@@ -84,6 +107,7 @@ async function handlePOST(req: Request) {
           d.notes,
           attachmentId,
           d.date,
+          d.replacesId || null,
         ],
       );
       await event(

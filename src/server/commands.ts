@@ -1,3 +1,11 @@
+import {
+  row,
+  event,
+  consultation,
+  checkPatientConsultation,
+  markCorrection,
+} from "./encounter-records";
+import { correctEncounter } from "./encounter-corrections";
 import { formatAddress } from "@/lib/address";
 import { getOrgId, requestIdentity } from "@/server/context";
 import { randomUUID, createHash } from "node:crypto";
@@ -14,62 +22,10 @@ import {
   requireVeterinarian,
 } from "./professional-profile";
 
-async function row(db: PoolClient, table: string, id: string) {
-  const r = await db.query(`SELECT * FROM ${table} WHERE id=$1`, [id]);
-  if (!r.rows[0]) throw new AppError("Registro não encontrado.", 404);
-  return r.rows[0];
-}
-async function event(
-  db: PoolClient,
-  patientId: string,
-  consultationId: string | null,
-  type: string,
-  entityId: string | null,
-  title: string,
-  text = "",
-  occurredAt?: string,
-) {
-  await db.query(
-    "INSERT INTO timeline(id,organization_id,patient_id,consultation_id,type,entity_id,title,text,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::timestamptz,now()))",
-    [
-      randomUUID(),
-      getOrgId(),
-      patientId,
-      consultationId,
-      type,
-      entityId,
-      title,
-      text,
-      occurredAt || null,
-    ],
-  );
-}
-async function consultation(db: PoolClient, id: string) {
-  let c = await row(db, "consultations", id);
-  await db.query("SELECT id FROM visits WHERE id=$1 FOR UPDATE", [c.visit_id]);
-  c = await row(db, "consultations", id);
-  const v = await row(db, "visits", c.visit_id);
-  if (v.status === "cancelled")
-    throw new AppError("Esta visita foi cancelada.");
-  return c;
-}
-async function checkPatientConsultation(
-  db: PoolClient,
-  patientId: string,
-  id: string | null,
-) {
-  await row(db, "patients", patientId);
-  if (id) {
-    const c = await row(db, "consultations", id);
-    if (c.patient_id !== patientId)
-      throw new AppError("A consulta não pertence a este paciente.");
-  }
-}
-
 export async function runCommand(input: unknown, requestId: string) {
   const cmd = commandSchema.parse(input),
     hash = createHash("sha256").update(JSON.stringify(cmd)).digest("hex");
-  if (cmd.type === "prescription.create") requireVeterinarian();
+  if (cmd.type.startsWith("prescription.")) requireVeterinarian();
   return forOrg(async (db) => {
     // Serializes duplicate requests and commits their response with the mutation itself.
     const lock = await db.query(
@@ -87,7 +43,12 @@ export async function runCommand(input: unknown, requestId: string) {
         throw new AppError("Identificador de requisição já utilizado.", 409);
       return previous.response;
     }
-    const result = await execute(db, cmd);
+    await db.query(
+      "SELECT set_config('app.change_reason',$1,true),set_config('app.request_id',$2,true)",
+      ["reason" in cmd ? cmd.reason || "" : "", requestId],
+    );
+    const result =
+      (await correctEncounter(db, cmd)) || (await execute(db, cmd));
     await db.query(
       "INSERT INTO audit_log(organization_id,action,entity_id) VALUES($1,$2,$3)",
       [getOrgId(), cmd.type, result.id],
@@ -290,6 +251,10 @@ async function execute(
           cmd.baseCents,
         ],
       );
+      await db.query("UPDATE visits SET performed_on=$2 WHERE id=$1", [
+        id,
+        cmd.date,
+      ]);
       for (const patientId of ids)
         await db.query(
           "INSERT INTO visit_patients(organization_id,visit_id,patient_id,reason) VALUES($1,$2,$3,$4)",
@@ -340,7 +305,7 @@ async function execute(
       if (!member) throw new AppError("Paciente não vinculado à visita.");
       const id = randomUUID();
       await db.query(
-        "INSERT INTO consultations(id,organization_id,visit_id,patient_id) VALUES($1,$2,$3,$4)",
+        "INSERT INTO consultations(id,organization_id,visit_id,patient_id,occurred_on,occurred_time) SELECT $1,$2,$3,$4,performed_on,(starts_at AT TIME ZONE 'America/Sao_Paulo')::time FROM visits WHERE id=$3",
         [id, getOrgId(), cmd.visitId, cmd.patientId],
       );
       await event(
@@ -357,11 +322,24 @@ async function execute(
       const c = await consultation(db, cmd.id);
       if (cmd.complete && !cmd.notes.trim())
         throw new AppError("Preencha o registro clínico antes de concluir.");
-      if (c.status === "completed")
+      if (c.status === "completed" && !cmd.reason)
         throw new AppError(
-          "Atendimento concluído. Registre complementos como notas na timeline.",
+          "Atendimento concluído. Informe o motivo da correção.",
           409,
         );
+      const occurredOn =
+        cmd.occurredOn === undefined ? c.occurred_on : cmd.occurredOn;
+      const occurredTime =
+        cmd.occurredTime === undefined ? c.occurred_time : cmd.occurredTime;
+      const complete = cmd.complete || c.status === "completed";
+      if (complete && (!occurredOn || !cmd.notes.trim()))
+        throw new AppError(
+          "Informe a data do atendimento e o registro clínico antes de concluir.",
+        );
+      if (occurredOn && dateKey(occurredOn) > dateKey())
+        throw new AppError("A data do atendimento não pode estar no futuro.");
+      if (!occurredOn && occurredTime)
+        throw new AppError("Informe a data antes do horário.");
       for (const value of Object.values(cmd.vitals)) {
         if (value && !/^\d+(?:[.,]\d+)?$/.test(value))
           throw new AppError(
@@ -369,13 +347,15 @@ async function execute(
           );
       }
       const update = await db.query(
-        "UPDATE consultations SET notes=$2,vitals=$3,status=$4,revision=revision+1,updated_at=now() WHERE id=$1 AND revision=$5 RETURNING revision",
+        "UPDATE consultations SET notes=$2,vitals=$3,status=$4,revision=revision+1,updated_at=now(),occurred_on=$6,occurred_time=$7 WHERE id=$1 AND revision=$5 RETURNING revision",
         [
           cmd.id,
           cmd.notes,
           JSON.stringify(cmd.vitals),
-          cmd.complete ? "completed" : "draft",
+          complete ? "completed" : "draft",
           cmd.revision,
+          occurredOn,
+          occurredTime,
         ],
       );
       if (!update.rowCount)
@@ -383,7 +363,17 @@ async function execute(
           "Este atendimento mudou em outra aba. Recarregue antes de salvar para evitar sobrescrever dados.",
           409,
         );
-      if (cmd.complete)
+      await db.query(
+        "UPDATE visits SET performed_on=$2,revision=revision+1 WHERE id=$1 AND origin='direct' AND performed_on IS DISTINCT FROM $2::date",
+        [c.visit_id, occurredOn],
+      );
+      if (occurredOn)
+        await db.query(
+          "UPDATE timeline SET occurred_at=($2::date+$3::time) AT TIME ZONE 'America/Sao_Paulo' WHERE consultation_id=$1 AND type IN ('consultation','application')",
+          [c.id, dateKey(occurredOn), occurredTime || "12:00"],
+        );
+      if (c.status === "completed") await markCorrection(db, c.id);
+      if (complete)
         await db.query(
           "UPDATE visits v SET status='completed' WHERE v.id=$1 AND NOT EXISTS(SELECT 1 FROM visit_patients vp LEFT JOIN consultations c ON c.visit_id=vp.visit_id AND c.patient_id=vp.patient_id WHERE vp.visit_id=v.id AND (c.status IS NULL OR c.status<>'completed'))",
           [c.visit_id],
@@ -392,9 +382,9 @@ async function execute(
     }
     case "application.create": {
       const c = await consultation(db, cmd.consultationId);
-      if (c.status === "completed")
+      if (c.status === "completed" && !cmd.reason)
         throw new AppError(
-          "Adicione aplicações antes de concluir o atendimento.",
+          "Adicione aplicações antes de concluir ou informe o motivo da correção.",
         );
       await db.query("SELECT id FROM visits WHERE id=$1 FOR UPDATE", [
         c.visit_id,
@@ -420,6 +410,7 @@ async function execute(
         ],
       );
       await event(db, c.patient_id, c.id, "application", id, p.name);
+      await markCorrection(db, c.id);
       return { id };
     }
     case "prescription.create": {
@@ -498,6 +489,8 @@ async function execute(
       return { id };
     }
     case "payment.create": {
+      if (cmd.paidOn && cmd.paidOn > dateKey())
+        throw new AppError("Data de recebimento no futuro.");
       await db.query("SELECT id FROM visits WHERE id=$1 FOR UPDATE", [
         cmd.visitId,
       ]);
@@ -505,7 +498,7 @@ async function execute(
       if (v.status === "cancelled") throw new AppError("Visita cancelada.");
       const sum = (
         await db.query(
-          "SELECT COALESCE((SELECT sum(a.total_cents) FROM applications a JOIN consultations c ON c.id=a.consultation_id WHERE c.visit_id=$1),0)::integer AS applications,COALESCE((SELECT sum(amount_cents) FROM payments WHERE visit_id=$1),0)::integer AS received",
+          "SELECT COALESCE((SELECT sum(a.total_cents) FROM applications a JOIN consultations c ON c.id=a.consultation_id WHERE c.visit_id=$1 AND a.status='active'),0)::integer AS applications,COALESCE((SELECT sum(amount_cents) FROM payments WHERE visit_id=$1 AND status='active'),0)::integer AS received",
           [v.id],
         )
       ).rows[0];
@@ -513,11 +506,19 @@ async function execute(
         throw new AppError("O valor recebido ultrapassa o saldo em aberto.");
       const id = randomUUID();
       await db.query(
-        "INSERT INTO payments(id,organization_id,visit_id,amount_cents,method) VALUES($1,$2,$3,$4,$5)",
-        [id, getOrgId(), v.id, cmd.amountCents, cmd.method],
+        "INSERT INTO payments(id,organization_id,visit_id,amount_cents,method,paid_on) VALUES($1,$2,$3,$4,$5,$6)",
+        [
+          id,
+          getOrgId(),
+          v.id,
+          cmd.amountCents,
+          cmd.method,
+          cmd.paidOn || dateKey(),
+        ],
       );
       return { id };
     }
   }
+  throw new AppError("Comando não suportado.");
 }
 export { checkPatientConsultation, event };

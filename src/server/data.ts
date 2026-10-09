@@ -21,8 +21,7 @@ export async function loadData(): Promise<Bootstrap> {
       consultations: "consultations",
       products: "products",
       applications: "applications",
-      prescriptions: "prescriptions",
-      exams: "exams",
+
       examLinks: "exam_links",
       timeline: "timeline",
     };
@@ -37,7 +36,28 @@ export async function loadData(): Promise<Bootstrap> {
     result.prescriptions = camelRows(
       (
         await db.query(
-          `SELECT r.*,s.signed_at FROM prescriptions r LEFT JOIN prescription_signatures s ON s.prescription_id=r.id`,
+          `SELECT r.id,r.organization_id,r.consultation_id,r.items,r.instructions,r.status,r.created_at,r.prescriber_id,r.prescriber,r.replaces_id,r.record_status,s.signed_at FROM prescriptions r LEFT JOIN prescription_signatures s ON s.prescription_id=r.id`,
+        )
+      ).rows,
+    );
+    result.exams = camelRows(
+      (
+        await db.query(
+          "SELECT id,organization_id,patient_id,consultation_id,request_id,kind,name,mode,partner,notes,attachment_id,to_char(occurred_on,'YYYY-MM-DD') AS occurred_on,created_at,replaces_id,record_status FROM exams",
+        )
+      ).rows,
+    );
+    result.consultations = camelRows(
+      (
+        await db.query(
+          "SELECT c.*,to_char(occurred_on,'YYYY-MM-DD') AS occurred_on,to_char(occurred_time,'HH24:MI') AS occurred_time FROM consultations c",
+        )
+      ).rows,
+    );
+    result.payments = camelRows(
+      (
+        await db.query(
+          "SELECT p.*,to_char(paid_on,'YYYY-MM-DD') AS paid_on FROM payments p",
         )
       ).rows,
     );
@@ -51,7 +71,7 @@ export async function loadData(): Promise<Bootstrap> {
     result.visits = camelRows(
       (
         await db.query(
-          `SELECT v.*, (v.base_cents+COALESCE((SELECT sum(a.total_cents) FROM applications a JOIN consultations c ON c.id=a.consultation_id WHERE c.visit_id=v.id),0))::integer AS total_cents,COALESCE((SELECT sum(p.amount_cents) FROM payments p WHERE p.visit_id=v.id),0)::integer AS received_cents FROM visits v ORDER BY starts_at`,
+          `SELECT v.*,to_char(v.performed_on,'YYYY-MM-DD') AS performed_on, (v.base_cents+COALESCE((SELECT sum(a.total_cents) FROM applications a JOIN consultations c ON c.id=a.consultation_id WHERE c.visit_id=v.id AND a.status='active'),0))::integer AS total_cents,COALESCE((SELECT sum(p.amount_cents) FROM payments p WHERE p.visit_id=v.id AND p.status='active'),0)::integer AS received_cents FROM visits v ORDER BY starts_at`,
         )
       ).rows,
     );
