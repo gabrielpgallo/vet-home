@@ -4,13 +4,18 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@libpdf/core@0.4.2':
+    hash: bf3bb256e35226e451ceb1b9140f0b5e8a39d3be1875672a8dc8f3404c6dcc55
+    path: patches/@libpdf__core@0.4.2.patch
+
 importers:
 
   .:
     dependencies:
       '@libpdf/core':
         specifier: 0.4.2
-        version: 0.4.2
+        version: 0.4.2(patch_hash=bf3bb256e35226e451ceb1b9140f0b5e8a39d3be1875672a8dc8f3404c6dcc55)
       asn1js:
         specifier: 3.0.10
         version: 3.0.10
@@ -26,9 +31,6 @@ importers:
       next-themes:
         specifier: 0.4.6
         version: 0.4.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      node-forge:
-        specifier: 1.4.0
-        version: 1.4.0
       pdfkit:
         specifier: 0.19.1
         version: 0.19.1
@@ -54,9 +56,6 @@ importers:
       '@types/node':
         specifier: ^22
         version: 22.20.3
-      '@types/node-forge':
-        specifier: ^1.3.14
-        version: 1.3.14
       '@types/pdfkit':
         specifier: ^0.17.6
         version: 0.17.6
@@ -871,9 +870,6 @@ packages:
 
   '@types/json5@0.0.29':
     resolution: {integrity: sha512-dRLjCWHYg4oaA77cxO64oO+7JwCwnIzkZPdrrC71jQmQtlhM556pwKo5bUzqvZndkVbeFLIIi+9TC40JNF5hNQ==}
-
-  '@types/node-forge@1.3.14':
-    resolution: {integrity: sha512-mhVF2BnD4BO+jtOp7z1CdzaK4mbuK0LLQYAvdOLqHTavxFNq4zA1EmYkpnFjP8HOUzedfQkRnp0E2ulSAYSzAw==}
 
   '@types/node@22.20.3':
     resolution: {integrity: sha512-DZmzkmwHzXrLPAXPyKNDzlIwMMUZCVacoD25ywdy5YTKGbOx/2ld+Q38Im2zJ0vBuZP5Prd3VZutKZyXwkOS8A==}
@@ -2108,10 +2104,6 @@ packages:
     resolution: {integrity: sha512-kXs9Go0cah0qHVV2v389IXQLdLCeE1xfFtjOAF+iobu0OIoG1pje8At2vMHyaPMiPMnG/LWP50twML21eMcAag==}
     engines: {node: '>= 0.4'}
 
-  node-forge@1.4.0:
-    resolution: {integrity: sha512-LarFH0+6VfriEhqMMcLX2F7SwSXeWwnEAJEsYm5QKWchiVYVvJyV9v7UDvUv+w5HO23ZpQTXDv/GxdDdMyOuoQ==}
-    engines: {node: '>= 6.13.0'}
-
   node-releases@2.0.55:
     resolution: {integrity: sha512-mIrE/Cw9y+9Au6dS5vDKDhQza9YvG6w+ZrS6X+ZzA7yFW/soAeaups4Qzn1bL6g5FVy8WtP79+0j82oPIbqRjQ==}
     engines: {node: '>=18'}
@@ -3183,7 +3175,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@libpdf/core@0.4.2':
+  '@libpdf/core@0.4.2(patch_hash=bf3bb256e35226e451ceb1b9140f0b5e8a39d3be1875672a8dc8f3404c6dcc55)':
     dependencies:
       '@noble/ciphers': 2.4.0
       '@noble/hashes': 2.4.0
@@ -3335,10 +3327,6 @@ snapshots:
   '@types/json-schema@7.0.15': {}
 
   '@types/json5@0.0.29': {}
-
-  '@types/node-forge@1.3.14':
-    dependencies:
-      '@types/node': 22.20.3
 
   '@types/node@22.20.3':
     dependencies:
@@ -4714,8 +4702,6 @@ snapshots:
       es-errors: 1.3.0
       object.entries: 1.1.9
       semver: 6.3.1
-
-  node-forge@1.4.0: {}
 
   node-releases@2.0.55: {}
 

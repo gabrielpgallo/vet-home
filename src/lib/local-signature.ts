@@ -1,5 +1,7 @@
 // This module is dynamically loaded only on the device. Never persist PFX/PIN.
-import forge from "node-forge";
+import { P12Signer } from "@libpdf/core";
+import { fromBER } from "asn1js";
+import { Certificate } from "pkijs";
 export interface LocalSigner {
   certificate: string;
   chain: string[];
@@ -7,6 +9,8 @@ export interface LocalSigner {
   sign: (attributes: string) => Promise<string>;
 }
 const bytes = (value: string) => Uint8Array.from(value, (c) => c.charCodeAt(0));
+const base64 = (value: Uint8Array) =>
+  btoa(Array.from(value, (byte) => String.fromCharCode(byte)).join(""));
 export async function openLocalCertificate(
   pfx: Uint8Array,
   pin: string,
@@ -16,76 +20,66 @@ export async function openLocalCertificate(
   if (pfx.length > 2 * 1024 * 1024)
     throw Error("O certificado deve ter até 2 MB.");
   try {
-    const container = forge.pkcs12.pkcs12FromAsn1(
-      forge.asn1.fromDer(forge.util.createBuffer(new Uint8Array(pfx).buffer)),
-      false,
-      pin,
-    );
-    const bags = (type: string) =>
-      container.getBags({ bagType: type })[type] || [];
-    const keys = [
-      ...bags(forge.pki.oids.pkcs8ShroudedKeyBag),
-      ...bags(forge.pki.oids.keyBag),
-    ]
-      .map((b) => b.key)
-      .filter(Boolean) as forge.pki.rsa.PrivateKey[];
-    const certificates = bags(forge.pki.oids.certBag)
-      .map((b) => b.cert)
-      .filter(Boolean) as forge.pki.Certificate[];
-    if (keys.length !== 1)
+    if (fromBER(new Uint8Array(pfx).buffer).offset !== pfx.length)
+      throw Error("Invalid PFX encoding");
+    // No AIA downloads: certificate, private key and PIN stay on the device.
+    // The pinned pnpm patch rejects multiple keys and imports RSA as non-extractable.
+    const signer = await P12Signer.create(pfx, pin, { buildChain: false });
+    if (signer.keyType !== "RSA")
       throw Error("O arquivo precisa conter uma única chave privada RSA.");
-    const key = keys[0];
-    const certificate = certificates.find((c) => {
-      const pub = c.publicKey as forge.pki.rsa.PublicKey;
-      return (
-        pub.n && pub.n.compareTo(key.n) === 0 && pub.e.compareTo(key.e) === 0
+    const certificates = [signer.certificate, ...signer.certificateChain];
+    // PFX certificate order is not guaranteed. Prove which public key matches
+    // instead of assuming the first bag belongs to the private key.
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const proof = await signer.sign(challenge, "SHA-256");
+    let selected: { der: Uint8Array; parsed: Certificate } | undefined;
+    for (const der of certificates) {
+      const parsed = Certificate.fromBER(new Uint8Array(der).buffer);
+      if (
+        parsed.subjectPublicKeyInfo.algorithm.algorithmId !==
+        "1.2.840.113549.1.1.1"
+      )
+        continue;
+      const publicKey = await crypto.subtle.importKey(
+        "spki",
+        parsed.subjectPublicKeyInfo.toSchema().toBER(false),
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        false,
+        ["verify"],
       );
-    });
-    if (!certificate)
+      if (
+        await crypto.subtle.verify(
+          "RSASSA-PKCS1-v1_5",
+          publicKey,
+          new Uint8Array(proof),
+          challenge,
+        )
+      ) {
+        selected = { der, parsed };
+        break;
+      }
+    }
+    if (!selected)
       throw Error("Certificado RSA correspondente não encontrado.");
     const now = new Date();
     if (
-      now < certificate.validity.notBefore ||
-      now > certificate.validity.notAfter
+      now < selected.parsed.notBefore.value ||
+      now > selected.parsed.notAfter.value
     )
       throw Error("Certificado vencido ou ainda não válido.");
-    const derKey = bytes(
-      forge.asn1
-        .toDer(forge.pki.wrapRsaPrivateKey(forge.pki.privateKeyToAsn1(key)))
-        .getBytes(),
-    );
-    let imported: CryptoKey;
-    try {
-      imported = await crypto.subtle.importKey(
-        "pkcs8",
-        derKey,
-        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-        false,
-        ["sign"],
-      );
-    } finally {
-      derKey.fill(0);
-    }
-    const encode = (c: forge.pki.Certificate) =>
-      forge.util.encode64(
-        forge.asn1.toDer(forge.pki.certificateToAsn1(c)).getBytes(),
-      );
     return {
-      certificate: encode(certificate),
-      chain: certificates.filter((c) => c !== certificate).map(encode),
+      certificate: base64(selected.der),
+      chain: certificates.filter((c) => c !== selected.der).map(base64),
       name: String(
-        certificate.subject.getField("CN")?.value || "Titular do certificado",
+        selected.parsed.subject.typesAndValues.find((v) => v.type === "2.5.4.3")
+          ?.value.valueBlock.value || "Titular do certificado",
       ),
-      sign: async (attributes) => {
-        const signature = await crypto.subtle.sign(
-          "RSASSA-PKCS1-v1_5",
-          imported,
-          bytes(atob(attributes)),
-        );
-        return btoa(String.fromCharCode(...new Uint8Array(signature)));
-      },
+      sign: async (attributes) =>
+        base64(await signer.sign(bytes(atob(attributes)), "SHA-256")),
     };
   } catch (e) {
+    if (e instanceof Error && /Multiple private keys/.test(e.message))
+      throw Error("O arquivo precisa conter uma única chave privada RSA.");
     if (
       e instanceof Error &&
       /Certificado vencido|chave privada RSA|correspondente/.test(e.message)

@@ -3,7 +3,6 @@ import { beforeAll, afterAll, it, expect, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { writeFile } from "node:fs/promises";
-import forge from "node-forge";
 import { signingCertificate } from "./helpers/signing-certificate";
 const trust = vi.hoisted(() => ({ roots: [] as string[] }));
 vi.mock("../src/server/signatures/icp-roots", () => ({
@@ -48,9 +47,9 @@ const actor: Identity = {
   local: false,
 };
 const act = <T>(fn: () => Promise<T>) => requestIdentity.run(actor, fn);
-let cert: ReturnType<typeof signingCertificate>;
+let cert: Awaited<ReturnType<typeof signingCertificate>>;
 beforeAll(async () => {
-  cert = signingCertificate();
+  cert = await signingCertificate();
   trust.roots.push(cert.root.toString("base64"));
   await admin.query("INSERT INTO organizations(id,name) VALUES($1,'TEST')", [
     org,
@@ -253,7 +252,10 @@ it("stores immutable signed PDF, is idempotent and logs signature metadata witho
 });
 
 it("accepts modern subject serialNumber CPF without a legacy SAN and still enforces matching CPF", async () => {
-  const modern = signingCertificate({ serialCpf: "11144477735", sanCpf: null });
+  const modern = await signingCertificate({
+    serialCpf: "11144477735",
+    sanCpf: null,
+  });
   expect(certificateCpf(modern.leaf)).toBe("11144477735");
   await expect(
     checkCertificate(modern.leaf, [modern.root], "111.444.777-35", [
@@ -266,34 +268,84 @@ it("accepts modern subject serialNumber CPF without a legacy SAN and still enfor
     ]),
   ).rejects.toThrow("não corresponde");
 });
-it.each([
-  forge.asn1.Type.OCTETSTRING,
-  forge.asn1.Type.PRINTABLESTRING,
-  forge.asn1.Type.UTF8,
-])("reads legacy CPF in ASN.1 type %s", (type) => {
-  expect(certificateCpf(signingCertificate({ sanType: type }).leaf)).toBe(
-    "11144477735",
-  );
-});
+it.each(["octet", "printable", "utf8"] as const)(
+  "reads legacy CPF in ASN.1 type %s",
+  async (type) => {
+    expect(
+      certificateCpf((await signingCertificate({ sanType: type })).leaf),
+    ).toBe("11144477735");
+  },
+);
 it("does not infer CPF from the certificate serial and distinguishes missing CPF from mismatch", async () => {
-  const missing = signingCertificate({ sanCpf: null });
+  const missing = await signingCertificate({ sanCpf: null });
   expect(certificateCpf(missing.leaf)).toBe("");
   await expect(
     checkCertificate(missing.leaf, [missing.root], "11144477735"),
   ).rejects.toThrow("Não foi possível identificar");
 });
-it("rejects contradictory CPF fields and company certificates", () => {
-  expect(() =>
-    certificateCpf(signingCertificate({ serialCpf: "12345678901" }).leaf),
-  ).toThrow("conflitantes");
+it("rejects contradictory CPF fields and company certificates", async () => {
+  const conflict = await signingCertificate({ serialCpf: "12345678901" });
+  expect(() => certificateCpf(conflict.leaf)).toThrow("conflitantes");
   expect(
-    certificateCpf(signingCertificate({ serialCpf: "12345678000199" }).leaf),
+    certificateCpf(
+      (await signingCertificate({ serialCpf: "12345678000199" })).leaf,
+    ),
   ).toBe("");
   expect(
     certificateCpf(
-      signingCertificate({ serialCpf: "11144477735", corporate: true }).leaf,
+      (await signingCertificate({ serialCpf: "11144477735", corporate: true }))
+        .leaf,
     ),
   ).toBe("");
+});
+
+it("matches the key regardless of certificate order and rejects multiple keys or a mismatched certificate", async () => {
+  const local = await openLocalCertificate(
+    await cert.customPfx({ rootFirst: true }),
+    "test-pin",
+  );
+  expect(local.certificate).toBe(cert.leaf.toString("base64"));
+  await expect(
+    openLocalCertificate(await cert.customPfx({ extraKey: true }), "test-pin"),
+  ).rejects.toThrow("única chave privada RSA");
+  await expect(
+    openLocalCertificate(await cert.customPfx({ mismatch: true }), "test-pin"),
+  ).rejects.toThrow("correspondente");
+});
+it("keeps the RSA key non-extractable, uses no network and rejects expired or tampered PFX", async () => {
+  const originalImport = crypto.subtle.importKey.bind(crypto.subtle);
+  const privateKeys: CryptoKey[] = [];
+  const importSpy = vi
+    .spyOn(crypto.subtle, "importKey")
+    .mockImplementation(async (...args) => {
+      const key = await originalImport(...args);
+      if (key.type === "private") privateKeys.push(key);
+      return key;
+    });
+  const fetcher = vi
+    .spyOn(globalThis, "fetch")
+    .mockRejectedValue(new Error("No network allowed"));
+  try {
+    await openLocalCertificate(cert.pfx(), "test-pin");
+    expect(privateKeys.length).toBeGreaterThan(0);
+    for (const key of privateKeys) {
+      expect(key.extractable).toBe(false);
+      await expect(crypto.subtle.exportKey("pkcs8", key)).rejects.toThrow();
+    }
+    const invalid = cert.pfx();
+    invalid[invalid.length - 10] ^= 1;
+    await expect(openLocalCertificate(invalid, "test-pin")).rejects.toThrow(
+      "PIN",
+    );
+    const expired = await signingCertificate({ expired: true });
+    await expect(
+      openLocalCertificate(expired.pfx(), "test-pin"),
+    ).rejects.toThrow("vencido");
+    expect(fetcher).not.toHaveBeenCalled();
+  } finally {
+    importSpy.mockRestore();
+    fetcher.mockRestore();
+  }
 });
 
 it("rejects prescription creation by non-veterinary admins and assistants", async () => {

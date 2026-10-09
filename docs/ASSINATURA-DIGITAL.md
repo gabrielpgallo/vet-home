@@ -29,8 +29,9 @@ A assinatura não substitui exigências do tipo de receituário ou do SIPEAGRO.
 
 ## Privacidade e protocolo
 
-1. node-forge abre o PFX localmente, verifica o PIN e encontra o certificado que
-   corresponde à chave. A chave RSA é importada no Web Crypto como não extraível.
+1. LibPDF abre o PFX localmente e verifica sua integridade e PIN. O navegador
+   encontra o certificado correspondente por uma assinatura de desafio, sem depender
+   da ordem da cadeia. A chave RSA é importada no Web Crypto como não extraível.
 2. O navegador envia apenas certificado público e cadeia ao POST da assinatura.
 3. O servidor valida o certificado e cria PDF e atributos CMS. Nenhum segredo
    pessoal é necessário no servidor. O PDF preparado não deve ser distribuído.
@@ -63,7 +64,10 @@ Migrations 014–016 são aplicadas pelo workflow de release antes do deploy. N�
 configurar novos secrets na Vercel. A preparação de PDF respeita limite de 4 MB;
 o request de retorno da assinatura é pequeno, sem upload de PDF/PFX.
 
-Testes usam uma CA fictícia, injetada apenas por mock no Vitest. Essa CA nunca
+Testes usam PKIjs e OpenSSL/LibreSSL para criar uma CA e arquivos PFX fictícios.
+O comando `openssl` deve estar disponível no ambiente de testes (já está no runner
+Ubuntu da release). Arquivos temporários com chaves de teste são apagados no final.
+A CA é injetada apenas por mock no Vitest. Essa CA nunca
 entra no trust store da aplicação. São verificados PIN incorreto, PFX AES/3DES,
 CPF divergente, cadeia não confiável, adulteração, mudança de dados, expiração,
 isolamento de conta/clínica, controle de permissão e persistência imutável.
@@ -98,3 +102,11 @@ Use o endereço de BETTER_AUTH_URL. As páginas de entrada, confirmação e iní
 redirecionam entre localhost e 127.0.0.1 para o host configurado, apenas no ambiente
 local e na mesma porta. Isso mantém cookies OAuth e callback na mesma origem,
 sem liberar origens adicionais. A proteção em produção permanece inalterada.
+
+## Dependências de criptografia
+
+O `node-forge` foi removido de produção e testes devido ao [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv), sem versão corrigida publicada na revisão de 8 de outubro de 2026. A leitura ASN.1 usa PKIjs/ASN1js; operações RSA e verificação CMS continuam usando Web Crypto/Node Crypto. A verificação no servidor recebe um `CryptoEngine` nativo explícito, independente do engine global usado pela biblioteca de PDF.
+
+`@libpdf/core@0.4.2` tem um patch versionado em `patches/@libpdf__core@0.4.2.patch`, aplicado automaticamente pelo pnpm, com hash no lockfile. Ele preserva as garantias anteriores do aplicativo: rejeitar múltiplas chaves no PFX, importar RSA como não extraível e limpar buffers DER temporários após a importação. A seleção do certificado correspondente, validade e restrição RSA ficam no adaptador local. Os testes cobrem essas garantias; ao atualizar LibPDF, revisar/reaplicar o patch antes de liberar a versão. A busca de cadeia por AIA fica desativada.
+
+A auditoria da release permanece sem exceções ou advisories ignorados. As correções de dependências incluem Next.js/ESLint Next 16.3.8, Sharp 0.35.5 e source-map-js 1.2.2.

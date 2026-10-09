@@ -5,25 +5,28 @@ import {
   Certificate,
   CertificateChainValidationEngine,
   ContentInfo,
+  CryptoEngine,
   SignedData,
 } from "pkijs";
-import forge from "node-forge";
 import { icpRoots } from "./icp-roots";
 import { AppError } from "../db";
+// Verification must not depend on the mutable engine installed by PDF/PFX helpers.
+const verificationCrypto = new CryptoEngine({
+  name: "vet-native-verifier",
+  crypto: globalThis.crypto,
+});
 const parse = (b: Uint8Array) =>
   new Certificate({ schema: asn1.fromBER(new Uint8Array(b).buffer).result });
 export const sha256 = (data: Uint8Array) =>
   createHash("sha256").update(data).digest("hex");
 export function certificateCpf(der: Uint8Array) {
-  const c = forge.pki.certificateFromAsn1(
-    forge.asn1.fromDer(forge.util.createBuffer(new Uint8Array(der).buffer)),
-  );
+  const c = parse(der);
   // DOC-ICP-04 / Resolution 211: modern certificates put CPF in the
   // subject serialNumber (2.5.4.5), not the certificate's hexadecimal serial.
   const candidates = new Set<string>();
-  for (const attribute of c.subject.attributes) {
+  for (const attribute of c.subject.typesAndValues) {
     if (attribute.type !== "2.5.4.5") continue;
-    const value = String(attribute.value).trim();
+    const value = String(attribute.value.valueBlock.value).trim();
     if (
       /^\d{14}$/.test(value) ||
       /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/.test(value)
@@ -32,47 +35,40 @@ export function certificateCpf(der: Uint8Array) {
     if (/^\d{11}$/.test(value) || /^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(value))
       candidates.add(value.replace(/\D/g, ""));
   }
-  const extension = c.extensions.find((e) => e.id === "2.5.29.17");
+  const extension = c.extensions?.find((e) => e.extnID === "2.5.29.17");
   if (extension) {
-    const san = forge.asn1.fromDer(extension.value as string);
-    if (Array.isArray(san.value))
-      for (const name of san.value) {
+    const san = asn1.fromBER(extension.extnValue.getValue()).result;
+    if (san instanceof asn1.Sequence)
+      for (const name of san.valueBlock.value) {
         if (
-          name.tagClass !== forge.asn1.Class.CONTEXT_SPECIFIC ||
-          name.type !== 0 ||
-          !Array.isArray(name.value)
+          !(name instanceof asn1.Constructed) ||
+          name.idBlock.tagClass !== 3 ||
+          name.idBlock.tagNumber !== 0
         )
           continue;
-        const [oid, wrapped] = name.value;
-        if (
-          !oid ||
-          oid.type !== forge.asn1.Type.OID ||
-          typeof oid.value !== "string"
-        )
-          continue;
-        const identifier = forge.asn1.derToOid(oid.value);
+        const [oid, wrapped] = name.valueBlock.value;
+        if (!(oid instanceof asn1.ObjectIdentifier)) continue;
+        const identifier = oid.valueBlock.toString();
         // A company's CNPJ / representative's CPF is not a personal e-CPF.
         if (identifier === "2.16.76.1.3.3") return "";
         if (
           identifier !== "2.16.76.1.3.1" ||
-          !wrapped ||
-          !Array.isArray(wrapped.value)
+          !(wrapped instanceof asn1.Constructed) ||
+          wrapped.idBlock.tagClass !== 3 ||
+          wrapped.idBlock.tagNumber !== 0
         )
           continue;
-        const node = wrapped.value[0];
-        if (
-          !node ||
-          node.tagClass !== forge.asn1.Class.UNIVERSAL ||
-          ![
-            forge.asn1.Type.OCTETSTRING,
-            forge.asn1.Type.PRINTABLESTRING,
-            forge.asn1.Type.UTF8,
-          ].includes(node.type)
+        const node = wrapped.valueBlock.value[0];
+        let value: string;
+        if (node instanceof asn1.OctetString)
+          value = new TextDecoder().decode(node.getValue());
+        else if (
+          node instanceof asn1.PrintableString ||
+          node instanceof asn1.Utf8String
         )
-          continue;
-        const value = node.value;
-        if (typeof value === "string" && /^\d{19}/.test(value))
-          candidates.add(value.slice(8, 19));
+          value = node.valueBlock.value;
+        else continue;
+        if (/^\d{19}/.test(value)) candidates.add(value.slice(8, 19));
       }
   }
   if (candidates.size > 1)
@@ -123,7 +119,10 @@ export async function checkCertificate(
     checkDate: new Date(),
   });
   // Chain/date verification only. OCSP/CRL and trusted time are not claimed.
-  if (!(await engine.verify({ passedWhenNotRevValues: true })).result)
+  if (
+    !(await engine.verify({ passedWhenNotRevValues: true }, verificationCrypto))
+      .result
+  )
     throw new AppError(
       "Cadeia ICP-Brasil incompleta, não suportada ou certificado fora da validade. Exporte o PFX incluindo a cadeia de certificados.",
     );
@@ -209,11 +208,14 @@ export async function completePdf(
     prepared.subarray(end),
   ]);
   if (
-    !(await cms.verify({
-      signer: 0,
-      data: new Uint8Array(signedBytes).buffer,
-      checkChain: false,
-    }))
+    !(await cms.verify(
+      {
+        signer: 0,
+        data: new Uint8Array(signedBytes).buffer,
+        checkChain: false,
+      },
+      verificationCrypto,
+    ))
   )
     throw new AppError("Falha ao conferir a integridade da assinatura.");
   content.content = cms.toSchema(true);

@@ -1,0 +1,59 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index ca555816b328f0f73aa4fc951fda869cc3e7c493..3b215e76db221f5d8d0ef4f6bae25f431caef2cc 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -45014,8 +45014,12 @@ var P12Signer = class P12Signer {
+ 				const safeContents = entry.value;
+ 				if (!safeContents.safeBags) continue;
+ 				for (const safeBag of safeContents.safeBags) {
+-					if (safeBag.bagId === "1.2.840.113549.1.12.10.1.2") privateKey = await P12Signer.extractPrivateKey(safeBag, password, passwordBuffer);
++					if (safeBag.bagId === "1.2.840.113549.1.12.10.1.2") {
++						if (privateKey) throw new SignerError("Multiple private keys in PKCS#12 file");
++						privateKey = await P12Signer.extractPrivateKey(safeBag, password, passwordBuffer);
++					}
+ 					if (safeBag.bagId === "1.2.840.113549.1.12.10.1.1") {
++						if (privateKey) throw new SignerError("Multiple private keys in PKCS#12 file");
+ 						const privateKeyInfo = safeBag.bagValue;
+ 						privateKey = await P12Signer.importPrivateKey(privateKeyInfo);
+ 					}
+@@ -45073,10 +45077,14 @@ var P12Signer = class P12Signer {
+ 			}),
+ 			password: passwordBuffer
+ 		});
+-		const pkcs8Asn1 = fromBER(decryptedKey);
+-		if (pkcs8Asn1.offset === -1) throw new SignerError("Failed to parse decrypted private key");
+-		const privateKeyInfo = new pkijs.PrivateKeyInfo({ schema: pkcs8Asn1.result });
+-		return P12Signer.importPrivateKey(privateKeyInfo);
++		try {
++			const pkcs8Asn1 = fromBER(decryptedKey);
++			if (pkcs8Asn1.offset === -1) throw new SignerError("Failed to parse decrypted private key");
++			const privateKeyInfo = new pkijs.PrivateKeyInfo({ schema: pkcs8Asn1.result });
++			return await P12Signer.importPrivateKey(privateKeyInfo);
++		} finally {
++			new Uint8Array(decryptedKey).fill(0);
++		}
+ 	}
+ 	/**
+ 	* Import a PrivateKeyInfo into WebCrypto.
+@@ -45084,10 +45092,17 @@ var P12Signer = class P12Signer {
+ 	static async importPrivateKey(privateKeyInfo) {
+ 		const crypto = getCrypto();
+ 		const algorithmOid = privateKeyInfo.privateKeyAlgorithm.algorithmId;
+-		if (algorithmOid === "1.2.840.113549.1.1.1") return crypto.importKey("pkcs8", privateKeyInfo.toSchema().toBER(false), {
+-			name: "RSASSA-PKCS1-v1_5",
+-			hash: "SHA-256"
+-		}, true, ["sign"]);
++		if (algorithmOid === "1.2.840.113549.1.1.1") {
++			const encodedKey = privateKeyInfo.toSchema().toBER(false);
++			try {
++				return await crypto.importKey("pkcs8", encodedKey, {
++					name: "RSASSA-PKCS1-v1_5",
++					hash: "SHA-256"
++				}, false, ["sign"]);
++			} finally {
++				new Uint8Array(encodedKey).fill(0);
++			}
++		}
+ 		if (algorithmOid === "1.2.840.10045.2.1") {
+ 			const params = privateKeyInfo.privateKeyAlgorithm.algorithmParams;
+ 			let namedCurve = "P-256";
