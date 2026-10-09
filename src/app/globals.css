@@ -2362,6 +2362,15 @@ button.confirmation-danger:hover {
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--border);
 }
+.encounter-heading {
+  flex-wrap: wrap;
+}
+.encounter-heading-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 .correction-stamp {
   margin: 0.5rem 0 1rem;
 }

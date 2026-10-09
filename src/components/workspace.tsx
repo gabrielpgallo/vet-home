@@ -44,6 +44,7 @@ import {
   Search,
   Settings2,
   Wallet,
+  PenLine,
 } from "lucide-react";
 import {
   dateKey,
@@ -1502,38 +1503,41 @@ function Encounter({
       >
         <section className="stack">
           <div className="panel">
-            <div className="section-heading">
+            <div className="section-heading encounter-heading">
               <h2>Registro clínico</h2>
-              <span className="badge">{statusLabel[c.status]}</span>
+              <div className="encounter-heading-actions">
+                <span className="badge">{statusLabel[c.status]}</span>
+                {c.status === "completed" && !editing && (
+                  <button
+                    className="compact-action"
+                    onClick={() => {
+                      setNotes(c.notes);
+                      setVitals(c.vitals);
+                      setOccurredOn(c.occurredOn || "");
+                      setOccurredTime(c.occurredTime || "");
+                      setRevision(c.revision);
+                      setSaved(
+                        JSON.stringify({
+                          notes: c.notes,
+                          vitals: c.vitals,
+                          occurredOn: c.occurredOn || "",
+                          occurredTime: c.occurredTime || "",
+                        }),
+                      );
+                      setEditing(true);
+                    }}
+                  >
+                    <PenLine size={15} aria-hidden="true" />
+                    Editar atendimento
+                  </button>
+                )}
+              </div>
             </div>
             {c.correctedAt && (
               <p className="hint correction-stamp">
                 Editado por {c.correctedBy} em {dateLabel(c.correctedAt)} às{" "}
                 {timeLabel(c.correctedAt)}
               </p>
-            )}
-            {c.status === "completed" && !editing && (
-              <button
-                className="compact-action"
-                onClick={() => {
-                  setNotes(c.notes);
-                  setVitals(c.vitals);
-                  setOccurredOn(c.occurredOn || "");
-                  setOccurredTime(c.occurredTime || "");
-                  setRevision(c.revision);
-                  setSaved(
-                    JSON.stringify({
-                      notes: c.notes,
-                      vitals: c.vitals,
-                      occurredOn: c.occurredOn || "",
-                      occurredTime: c.occurredTime || "",
-                    }),
-                  );
-                  setEditing(true);
-                }}
-              >
-                Editar atendimento
-              </button>
             )}
             <fieldset disabled={busy || !editing}>
               <div className="form-grid encounter-date">
