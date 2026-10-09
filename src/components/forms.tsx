@@ -587,6 +587,9 @@ export function ApplicationForm({
           quantityMilli: parseFixed(quantity, 3),
           batch: str(d, "batch"),
           route: str(d, "route"),
+          ...(consultation.status === "completed"
+            ? { reason: str(d, "reason") }
+            : {}),
         });
         onDone();
       }}
@@ -637,6 +640,18 @@ export function ApplicationForm({
           </div>
         </div>
       )}
+      {consultation.status === "completed" && (
+        <label>
+          Motivo da inclusão após conclusão
+          <textarea
+            name="reason"
+            required
+            minLength={3}
+            maxLength={2000}
+            rows={2}
+          />
+        </label>
+      )}
       <p className="hint">
         O servidor usa o preço atual do catálogo e guarda o valor aplicado no
         histórico. Alterações posteriores no produto não mudam essa cobrança.
@@ -663,6 +678,7 @@ export function PaymentForm({
           visitId: visit.id,
           amountCents: parseFixed(str(d, "amount")),
           method: str(d, "method") as (typeof paymentMethods)[number],
+          paidOn: str(d, "paidOn"),
         });
         onDone();
       }}
@@ -676,6 +692,14 @@ export function PaymentForm({
         mask="money"
         value={(due / 100).toFixed(2).replace(".", ",")}
         inputMode="decimal"
+        required
+      />
+      <Field
+        label="Data do recebimento"
+        name="paidOn"
+        type="date"
+        value={dateKey()}
+        max={dateKey()}
         required
       />
       <label>
@@ -719,8 +743,7 @@ export function ConsultationSelect({
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
           .map((c) => (
             <option key={c.id} value={c.id}>
-              {dateLabel(data.visits.find((v) => v.id === c.visitId)!.startsAt)}{" "}
-              ·{" "}
+              {dateLabel(c.occurredOn)} ·{" "}
               {data.visitPatients.find(
                 (v) => v.visitId === c.visitId && v.patientId === patientId,
               )?.reason || "Consulta"}
@@ -734,6 +757,7 @@ export function ExamForm({
   patientId,
   consultationId,
   request,
+  original,
   data,
   mutate,
   onUploaded,
@@ -742,19 +766,25 @@ export function ExamForm({
   patientId: string;
   consultationId?: string;
   request?: Exam;
+  original?: Exam;
   data: Bootstrap;
   mutate: Mutate;
   onUploaded: () => Promise<void>;
   onDone: () => void;
 }) {
   const [mode, setMode] = useState<"order" | "result" | "existing">(
-      request ? "result" : "order",
+      original?.kind || (request ? "result" : "order"),
     ),
     [consult, setConsult] = useState(
-      request?.consultationId || consultationId || "",
+      original?.consultationId ||
+        request?.consultationId ||
+        consultationId ||
+        "",
     ),
-    [requestId, setRequestId] = useState(request?.id || ""),
-    [name, setName] = useState(request?.name || "");
+    [requestId, setRequestId] = useState(
+      original?.requestId || request?.id || "",
+    ),
+    [name, setName] = useState(original?.name || request?.name || "");
   const uploadId = useRef(crypto.randomUUID());
   return (
     <AsyncForm
@@ -768,18 +798,33 @@ export function ExamForm({
       }
       onSubmit={async (d, action) => {
         if (mode === "order") {
-          const result = await mutate({
-            type: "exam.order",
-            patientId,
-            consultationId: consult || null,
-            name: str(d, "name"),
-            mode: str(d, "mode") as
-              | "Coleta pela veterinária"
-              | "Encaminhamento a outro profissional",
-            partner: str(d, "partner"),
-            notes: str(d, "notes"),
-            date: str(d, "date"),
-          });
+          const result = await mutate(
+            original
+              ? {
+                  type: "exam.replace",
+                  id: original.id,
+                  reason: str(d, "reason"),
+                  name: str(d, "name"),
+                  mode: str(d, "mode") as
+                    | "Coleta pela veterinária"
+                    | "Encaminhamento a outro profissional",
+                  partner: str(d, "partner"),
+                  notes: str(d, "notes"),
+                  date: str(d, "date"),
+                }
+              : {
+                  type: "exam.order",
+                  patientId,
+                  consultationId: consult || null,
+                  name: str(d, "name"),
+                  mode: str(d, "mode") as
+                    | "Coleta pela veterinária"
+                    | "Encaminhamento a outro profissional",
+                  partner: str(d, "partner"),
+                  notes: str(d, "notes"),
+                  date: str(d, "date"),
+                },
+          );
           if (action === "primary") {
             const download = document.createElement("a");
             download.href = `/api/exams/${result.id}/pdf`;
@@ -806,6 +851,9 @@ export function ExamForm({
               patientId,
               consultationId: consult || null,
               requestId: requestId || null,
+              ...(original
+                ? { replacesId: original.id, reason: str(d, "reason") }
+                : {}),
               name: str(d, "name"),
               notes: str(d, "notes"),
               date: str(d, "date"),
@@ -819,22 +867,42 @@ export function ExamForm({
         onDone();
       }}
     >
-      <div className="segments">
-        {[
-          ["order", "Solicitar"],
-          ["result", "Anexar PDF"],
-          ["existing", "Do histórico"],
-        ].map(([v, l]) => (
-          <button
-            key={v}
-            type="button"
-            className={mode === v ? "selected" : ""}
-            onClick={() => setMode(v as typeof mode)}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
+      {original && (
+        <p className="notice">
+          A correção cria uma nova versão. O pedido ou arquivo original
+          permanece disponível no histórico.
+        </p>
+      )}
+      {!original && (
+        <div className="segments">
+          {[
+            ["order", "Solicitar"],
+            ["result", "Anexar PDF"],
+            ["existing", "Do histórico"],
+          ].map(([v, l]) => (
+            <button
+              key={v}
+              type="button"
+              className={mode === v ? "selected" : ""}
+              onClick={() => setMode(v as typeof mode)}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
+      {original && (
+        <label>
+          Motivo da correção
+          <textarea
+            name="reason"
+            required
+            minLength={3}
+            maxLength={2000}
+            rows={2}
+          />
+        </label>
+      )}
       {mode === "result" && (
         <label>
           Pedido vinculado
@@ -851,7 +919,14 @@ export function ExamForm({
           >
             <option value="">Resultado sem pedido cadastrado</option>
             {data.exams
-              .filter((x) => x.patientId === patientId && x.kind === "order")
+              .filter(
+                (x) =>
+                  x.patientId === patientId &&
+                  x.kind === "order" &&
+                  (x.recordStatus === "active" ||
+                    !x.recordStatus ||
+                    x.id === original?.requestId),
+              )
               .map((x) => (
                 <option key={x.id} value={x.id}>
                   {x.name} · {dateLabel(x.occurredOn)}
@@ -890,28 +965,43 @@ export function ExamForm({
             label={mode === "order" ? "Data do pedido" : "Data do resultado"}
             name="date"
             type="date"
-            value={dateKey()}
+            value={
+              original?.kind === "result" ? original.occurredOn : dateKey()
+            }
             required
           />
         </>
       )}
-      <ConsultationSelect
-        data={data}
-        patientId={patientId}
-        value={consult}
-        onChange={setConsult}
-        required={mode === "existing"}
-      />
+      {original?.kind === "order" ? (
+        <p className="hint">
+          Consulta vinculada:{" "}
+          {dateLabel(
+            data.consultations.find((c) => c.id === consult)?.occurredOn,
+          )}
+        </p>
+      ) : (
+        <ConsultationSelect
+          data={data}
+          patientId={patientId}
+          value={consult}
+          onChange={setConsult}
+          required={mode === "existing"}
+        />
+      )}
       {mode === "order" && (
         <>
           <label>
             Realização
-            <select name="mode">
+            <select name="mode" defaultValue={original?.mode}>
               <option>Coleta pela veterinária</option>
               <option>Encaminhamento a outro profissional</option>
             </select>
           </label>
-          <Field label="Laboratório ou profissional" name="partner" />
+          <Field
+            label="Laboratório ou profissional"
+            name="partner"
+            value={original?.partner || ""}
+          />
         </>
       )}
       {mode === "result" && (
@@ -931,7 +1021,7 @@ export function ExamForm({
       {mode !== "existing" && (
         <label>
           Observações
-          <textarea name="notes" />
+          <textarea name="notes" defaultValue={original?.notes || ""} />
         </label>
       )}
       {mode === "existing" && (

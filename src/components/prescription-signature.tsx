@@ -8,7 +8,9 @@ export function PrescriptionSignature({
   signedAt,
   prescriberId,
   identity,
+  active = true,
 }: {
+  active?: boolean;
   id: string;
   signedAt?: string | null;
   prescriberId?: string | null;
@@ -20,7 +22,8 @@ export function PrescriptionSignature({
   return (
     <div className="prescription-signature">
       <div className="prescription-signature-actions">
-        {!signed &&
+        {active &&
+          !signed &&
           identity &&
           isVeterinarian(identity) &&
           prescriberId === identity.userId && (

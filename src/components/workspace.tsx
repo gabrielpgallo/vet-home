@@ -1,4 +1,9 @@
 "use client";
+import {
+  EncounterBilling,
+  RecordCorrection,
+  VoidDocument,
+} from "./encounter-corrections";
 import { formatInput, phoneMatches } from "@/lib/input-formats";
 import { PrescriptionSignature } from "./prescription-signature";
 import { AuditLog } from "./audit";
@@ -91,6 +96,7 @@ type Modal = {
   patientId?: string;
   consultationId?: string;
   requestId?: string;
+  replacementId?: string;
   thenSchedule?: boolean;
 };
 const nav = [
@@ -190,6 +196,14 @@ export default function Workspace() {
       window.scrollTo(0, 0);
     } finally {
       navigating.current = false;
+    }
+  }
+  async function startDirect(patientId: string) {
+    try {
+      const result = await mutate({ type: "consultation.create", patientId });
+      await go("consultation", result.id);
+    } catch (e) {
+      setToast((e as Error).message);
     }
   }
   async function start(visitId: string, patientId: string) {
@@ -377,7 +391,9 @@ export default function Workspace() {
                 <Back onClick={() => go("agenda")} />
                 {heading(
                   tutorName(visit.tutorId),
-                  `${dateLabel(visit.startsAt)} às ${timeLabel(visit.startsAt)} · ${visit.durationMinutes} minutos`,
+                  visit.origin === "direct"
+                    ? `Atendimento avulso · ${dateLabel(visit.performedOn)}`
+                    : `${dateLabel(visit.startsAt)} às ${timeLabel(visit.startsAt)} · ${visit.durationMinutes} minutos`,
                 )}
                 <div className="detail-grid">
                   <section className="stack">
@@ -448,73 +464,12 @@ export default function Workspace() {
                         })}
                     </div>
                   </section>
-                  <section className="panel bill">
-                    <h2>Cobrança da visita</h2>
-                    <div className="bill-line">
-                      <span>Consulta e deslocamento</span>
-                      <strong>{money(visit.baseCents)}</strong>
-                    </div>
-                    {data.applications
-                      .filter((a) =>
-                        data.consultations.some(
-                          (c) =>
-                            c.id === a.consultationId && c.visitId === visit.id,
-                        ),
-                      )
-                      .map((a) => (
-                        <div className="bill-line" key={a.id}>
-                          <span>
-                            {a.productName}
-                            <small>
-                              {a.quantityMilli / 1000} {a.unit} ·{" "}
-                              {
-                                data.patients.find(
-                                  (p) =>
-                                    p.id ===
-                                    data.consultations.find(
-                                      (c) => c.id === a.consultationId,
-                                    )?.patientId,
-                                )?.name
-                              }
-                            </small>
-                          </span>
-                          <span>{money(a.totalCents)}</span>
-                        </div>
-                      ))}
-                    <div className="bill-line total">
-                      <span>Total</span>
-                      <strong>{money(visit.totalCents)}</strong>
-                    </div>
-                    <div className="bill-line">
-                      <span>Recebido</span>
-                      <span>{money(visit.receivedCents)}</span>
-                    </div>
-                    <div className="bill-line">
-                      <span>Em aberto</span>
-                      <strong>
-                        {money(visit.totalCents - visit.receivedCents)}
-                      </strong>
-                    </div>
-                    {data.payments
-                      .filter((p) => p.visitId === visit.id)
-                      .map((p) => (
-                        <p className="hint" key={p.id}>
-                          {dateLabel(p.createdAt)} · {p.method} ·{" "}
-                          {money(p.amountCents)}
-                        </p>
-                      ))}
-                    <button
-                      className="primary full"
-                      disabled={
-                        visit.status === "cancelled" ||
-                        visit.totalCents <= visit.receivedCents
-                      }
-                      onClick={() =>
-                        setModal({ kind: "payment", id: visit.id })
-                      }
-                    >
-                      Registrar recebimento
-                    </button>
+                  <div className="stack">
+                    <EncounterBilling
+                      visitId={visit.id}
+                      data={data}
+                      mutate={mutate}
+                    />{" "}
                     {visit.status === "scheduled" &&
                       !data.consultations.some(
                         (c) => c.visitId === visit.id,
@@ -545,7 +500,7 @@ export default function Workspace() {
                           Cancelar visita
                         </button>
                       )}
-                  </section>
+                  </div>
                 </div>
               </>
             )}
@@ -591,13 +546,24 @@ export default function Workspace() {
                 {heading(
                   patient.name,
                   `${patient.species} · ${patient.breed || "Raça não informada"} · ${tutorName(patient.tutorId)}`,
-                  <button
-                    onClick={() =>
-                      setModal({ kind: "patient", id: patient.id })
-                    }
-                  >
-                    Editar cadastro
-                  </button>,
+                  <div className="row wrap">
+                    <button
+                      onClick={() =>
+                        setModal({ kind: "patient", id: patient.id })
+                      }
+                    >
+                      Editar cadastro
+                    </button>
+                    {allowed("clinical.write") && (
+                      <button
+                        className="primary"
+                        onClick={() => startDirect(patient.id)}
+                      >
+                        <Plus size={18} />
+                        Novo atendimento
+                      </button>
+                    )}
+                  </div>,
                 )}
                 {patient.notes && <div className="notice">{patient.notes}</div>}
                 <div className="detail-grid">
@@ -650,7 +616,9 @@ export default function Workspace() {
                                 Object.values(c.vitals).some(Boolean),
                             )
                             .sort((a, b) =>
-                              b.updatedAt.localeCompare(a.updatedAt),
+                              (b.occurredOn || "").localeCompare(
+                                a.occurredOn || "",
+                              ),
                             )[0]
                         }
                       />
@@ -660,6 +628,7 @@ export default function Workspace() {
                       {data.visits
                         .filter(
                           (v) =>
+                            v.origin !== "direct" &&
                             v.status === "scheduled" &&
                             data.visitPatients.some(
                               (vp) =>
@@ -673,7 +642,8 @@ export default function Workspace() {
                             key={v.id}
                             onClick={() => go("visit", v.id)}
                           >
-                            {dateLabel(v.startsAt)} · {timeLabel(v.startsAt)}
+                            {dateLabel(v.performedOn || v.startsAt)} ·{" "}
+                            {timeLabel(v.startsAt)}
                             <ChevronRight size={16} />
                           </button>
                         ))}
@@ -697,7 +667,20 @@ export default function Workspace() {
                 data={data}
                 mutate={mutate}
                 guardRef={guardRef}
-                back={() => go("visit", consult.visitId)}
+                back={() =>
+                  data.visits.find((v) => v.id === consult.visitId)?.origin ===
+                  "direct"
+                    ? go("patient", consult.patientId)
+                    : go("visit", consult.visitId)
+                }
+                editDocument={(kind, id) =>
+                  setModal({
+                    kind,
+                    replacementId: id,
+                    patientId: consult.patientId,
+                    consultationId: consult.id,
+                  })
+                }
                 onAction={(kind) =>
                   setModal({
                     kind,
@@ -906,7 +889,7 @@ export default function Workspace() {
                               data.patients.find((p) => p.id === c.patientId)
                                 ?.name
                             }{" "}
-                            · {dateLabel(c.createdAt)}
+                            · {dateLabel(c.occurredOn)}
                           </span>
                           <ChevronRight size={18} />
                         </button>
@@ -920,8 +903,15 @@ export default function Workspace() {
                     {data.exams
                       .filter(
                         (e) =>
+                          e.recordStatus !== "replaced" &&
+                          e.recordStatus !== "voided" &&
                           e.kind === "order" &&
-                          !data.exams.some((r) => r.requestId === e.id),
+                          !data.exams.some(
+                            (r) =>
+                              r.requestId === e.id &&
+                              r.recordStatus !== "voided" &&
+                              r.recordStatus !== "replaced",
+                          ),
                       )
                       .map((e) => (
                         <div className="record-row" key={e.id}>
@@ -974,7 +964,7 @@ export default function Workspace() {
                           <span>
                             {tutorName(v.tutorId)}
                             <small>
-                              {dateLabel(v.startsAt)}
+                              {dateLabel(v.performedOn || v.startsAt)}
                               {v.status === "scheduled"
                                 ? " · visita agendada"
                                 : ""}
@@ -1003,7 +993,7 @@ export default function Workspace() {
       )}
       {data && modal && (
         <Dialog
-          key={`${modal.kind}:${modal.id || modal.consultationId || modal.patientId || "new"}`}
+          key={`${modal.kind}:${modal.replacementId || modal.id || modal.consultationId || modal.patientId || "new"}`}
           drawer={modal.kind === "exam" || modal.kind === "prescription"}
           dirtyRef={documentDirty}
           title={
@@ -1015,7 +1005,9 @@ export default function Workspace() {
               application: "Registrar aplicação",
               payment: "Registrar recebimento",
               exam: "Exames",
-              prescription: "Nova receita",
+              prescription: modal.replacementId
+                ? "Corrigir receita"
+                : "Nova receita",
               note: "Nota de acompanhamento",
             }[modal.kind]
           }
@@ -1081,6 +1073,9 @@ export default function Workspace() {
           {modal.kind === "prescription" &&
             data.consultations.find((c) => c.id === modal.consultationId) && (
               <PrescriptionEditor
+                original={data.prescriptions.find(
+                  (p) => p.id === modal.replacementId,
+                )}
                 patient={data.patients.find((p) => p.id === modal.patientId)!}
                 consultation={
                   data.consultations.find((c) => c.id === modal.consultationId)!
@@ -1095,6 +1090,7 @@ export default function Workspace() {
             )}
           {modal.kind === "exam" && (
             <ExamForm
+              original={data.exams.find((e) => e.id === modal.replacementId)}
               patientId={modal.patientId!}
               consultationId={modal.consultationId}
               request={data.exams.find((e) => e.id === modal.requestId)}
@@ -1144,7 +1140,7 @@ function Empty({ text }: { text: string }) {
 function Measurements({ consultation: c }: { consultation?: Consultation }) {
   return c ? (
     <>
-      <p className="hint">{dateLabel(c.updatedAt)}</p>
+      <p className="hint">{dateLabel(c.occurredOn)}</p>
       <dl className="measurement-list">
         {historicalVitalFields
           .filter(([k]) => c.vitals[k])
@@ -1247,9 +1243,28 @@ function TimelinePost({
             }[e.type]
           }
         </span>
-        <time>{dateLabel(exam?.occurredOn || e.occurredAt)}</time>
+        <time>
+          {dateLabel(
+            e.type === "consultation" || e.type === "application"
+              ? c?.occurredOn
+              : exam?.occurredOn || e.occurredAt,
+          )}
+        </time>
       </div>
       <h3>{e.title}</h3>
+      {(rx?.recordStatus === "replaced" ||
+        exam?.recordStatus === "replaced") && (
+        <span className="badge">Substituído · versão anterior</span>
+      )}
+      {(rx?.recordStatus === "voided" ||
+        exam?.recordStatus === "voided" ||
+        app?.status === "voided") && <span className="badge">Cancelado</span>}
+      {e.type === "consultation" && c?.correctedAt && (
+        <p className="hint">
+          Editado por {c.correctedBy} em {dateLabel(c.correctedAt)} às{" "}
+          {timeLabel(c.correctedAt)}
+        </p>
+      )}
       {e.type === "consultation" && c && (
         <>
           <p className="preserve-text">
@@ -1274,6 +1289,9 @@ function TimelinePost({
             signedAt={rx.signedAt}
             prescriberId={rx.prescriberId}
             identity={data.identity}
+            active={
+              rx.recordStatus !== "replaced" && rx.recordStatus !== "voided"
+            }
           />
         </>
       )}
@@ -1297,9 +1315,16 @@ function TimelinePost({
               Baixar resultado PDF
             </a>
           )}
-          {exam.kind === "order" &&
+          {exam.recordStatus !== "replaced" &&
+            exam.recordStatus !== "voided" &&
+            exam.kind === "order" &&
             openExam &&
-            !data.exams.some((x) => x.requestId === exam.id) && (
+            !data.exams.some(
+              (x) =>
+                x.requestId === exam.id &&
+                x.recordStatus !== "replaced" &&
+                x.recordStatus !== "voided",
+            ) && (
               <button onClick={() => openExam(exam.id)}>
                 Anexar resultado
               </button>
@@ -1332,9 +1357,7 @@ function TimelinePost({
       )}
       {c && (
         <button className="event-relation" onClick={() => openConsult(c.id)}>
-          ↳ Consulta de{" "}
-          {dateLabel(data.visits.find((v) => v.id === c.visitId)!.startsAt)} ·{" "}
-          {statusLabel[c.status]}
+          ↳ Consulta de {dateLabel(c.occurredOn)} · {statusLabel[c.status]}
         </button>
       )}
     </article>
@@ -1349,7 +1372,9 @@ function Encounter({
   onAction,
   prescription,
   openConsult,
+  editDocument,
 }: {
+  editDocument: (kind: "prescription" | "exam", id: string) => void;
   consultation: Consultation;
   data: Bootstrap;
   mutate: Mutate;
@@ -1365,10 +1390,22 @@ function Encounter({
     [history, setHistory] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [occurredOn, setOccurredOn] = useState(c.occurredOn || ""),
+    [occurredTime, setOccurredTime] = useState(c.occurredTime || ""),
+    [editing, setEditing] = useState(c.status === "draft"),
+    [reason, setReason] = useState("");
+  const [revision, setRevision] = useState(c.revision);
+  const dateInput = useRef<HTMLInputElement>(null);
   const [saved, setSaved] = useState(
-    JSON.stringify({ notes: c.notes, vitals: c.vitals }),
+    JSON.stringify({
+      notes: c.notes,
+      vitals: c.vitals,
+      occurredOn: c.occurredOn || "",
+      occurredTime: c.occurredTime || "",
+    }),
   );
-  const dirty = JSON.stringify({ notes, vitals }) !== saved;
+  const dirty =
+    JSON.stringify({ notes, vitals, occurredOn, occurredTime }) !== saved;
   const patient = data.patients.find((p) => p.id === c.patientId)!;
   useEffect(() => {
     guardRef.current = () =>
@@ -1394,12 +1431,23 @@ function Encounter({
     };
   }, [dirty, guardRef, confirm]);
   async function save(complete = false) {
+    if ((complete || c.status === "completed") && !occurredOn) {
+      setError(
+        "Informe a data em que o atendimento aconteceu antes de concluir.",
+      );
+      dateInput.current?.focus();
+      return;
+    }
+    if (c.status === "completed" && reason.trim().length < 3) {
+      setError("Informe o motivo da correção.");
+      return;
+    }
     if (
       complete &&
       !(await confirm({
         title: "Concluir atendimento?",
         description:
-          "O registro clínico será preservado. Depois de concluir, você poderá adicionar complementos como notas no histórico.",
+          "O atendimento será concluído. Correções posteriores exigirão um motivo e ficarão registradas na auditoria.",
         confirmLabel: "Concluir atendimento",
         cancelLabel: "Continuar editando",
       }))
@@ -1408,15 +1456,21 @@ function Encounter({
     setBusy(true);
     setError("");
     try {
-      await mutate({
+      const result = await mutate({
         type: "consultation.save",
         id: c.id,
-        revision: c.revision,
+        revision: revision,
+        occurredOn: occurredOn || null,
+        occurredTime: occurredTime || null,
+        ...(c.status === "completed" ? { reason: reason.trim() } : {}),
         notes,
         vitals,
         complete,
       });
-      setSaved(JSON.stringify({ notes, vitals }));
+      setSaved(JSON.stringify({ notes, vitals, occurredOn, occurredTime }));
+      setRevision(result.revision!);
+      if (complete || c.status === "completed") setEditing(false);
+      setReason("");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -1434,7 +1488,7 @@ function Encounter({
           <p className="muted">
             {patient.species} ·{" "}
             {data.tutors.find((t) => t.id === patient.tutorId)?.name} ·{" "}
-            {dateLabel(data.visits.find((v) => v.id === c.visitId)!.startsAt)}
+            {dateLabel(c.occurredOn)}
           </p>
         </div>
         <button onClick={() => setHistory(!history)}>
@@ -1452,7 +1506,60 @@ function Encounter({
               <h2>Registro clínico</h2>
               <span className="badge">{statusLabel[c.status]}</span>
             </div>
-            <fieldset disabled={busy || c.status === "completed"}>
+            {c.correctedAt && (
+              <p className="hint correction-stamp">
+                Editado por {c.correctedBy} em {dateLabel(c.correctedAt)} às{" "}
+                {timeLabel(c.correctedAt)}
+              </p>
+            )}
+            {c.status === "completed" && !editing && (
+              <button
+                className="compact-action"
+                onClick={() => {
+                  setNotes(c.notes);
+                  setVitals(c.vitals);
+                  setOccurredOn(c.occurredOn || "");
+                  setOccurredTime(c.occurredTime || "");
+                  setRevision(c.revision);
+                  setSaved(
+                    JSON.stringify({
+                      notes: c.notes,
+                      vitals: c.vitals,
+                      occurredOn: c.occurredOn || "",
+                      occurredTime: c.occurredTime || "",
+                    }),
+                  );
+                  setEditing(true);
+                }}
+              >
+                Editar atendimento
+              </button>
+            )}
+            <fieldset disabled={busy || !editing}>
+              <div className="form-grid encounter-date">
+                <label>
+                  Data do atendimento
+                  <input
+                    ref={dateInput}
+                    aria-label="Data do atendimento"
+                    type="date"
+                    max={dateKey()}
+                    value={occurredOn}
+                    onChange={(e) => setOccurredOn(e.target.value)}
+                  />
+                  <span className="hint">
+                    Pode ser informada agora ou ao concluir.
+                  </span>
+                </label>
+                <label>
+                  Horário (opcional)
+                  <input
+                    type="time"
+                    value={occurredTime}
+                    onChange={(e) => setOccurredTime(e.target.value)}
+                  />
+                </label>
+              </div>
               <label>
                 Anamnese, exame físico e conduta
                 <textarea
@@ -1464,10 +1571,10 @@ function Encounter({
               </label>
               <AnamnesisAI
                 id={c.id}
-                revision={c.revision}
+                revision={revision}
                 notes={notes}
                 configured={data.settings.hasGeminiKey}
-                disabled={busy || c.status === "completed"}
+                disabled={busy || !editing}
                 onApply={setNotes}
               />
               <h3 className="spaced">Medições</h3>
@@ -1490,6 +1597,21 @@ function Encounter({
                 ))}
               </div>
             </fieldset>
+            {editing && c.status === "completed" && (
+              <label>
+                Motivo da correção
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  maxLength={2000}
+                  rows={2}
+                  required
+                />
+                <span className="hint">
+                  A versão anterior será preservada na auditoria.
+                </span>
+              </label>
+            )}
             {error && (
               <p className="error" role="alert">
                 {error}
@@ -1503,18 +1625,56 @@ function Encounter({
                     ? "Alterações ainda não salvas"
                     : `Salvo · ${timeLabel(c.updatedAt)}`}
               </span>
-              {c.status === "draft" && (
+              {editing && (
                 <div className="row wrap">
                   <button disabled={busy} onClick={() => save()}>
-                    Salvar atendimento
+                    {c.status === "completed"
+                      ? "Salvar correção"
+                      : "Salvar atendimento"}
                   </button>
-                  <button
-                    className="primary"
-                    disabled={busy}
-                    onClick={() => save(true)}
-                  >
-                    Concluir atendimento
-                  </button>
+                  {c.status === "draft" ? (
+                    <button
+                      className="primary"
+                      disabled={busy}
+                      onClick={() => save(true)}
+                    >
+                      Concluir atendimento
+                    </button>
+                  ) : (
+                    <button
+                      disabled={busy}
+                      onClick={async () => {
+                        if (
+                          dirty &&
+                          !(await confirm({
+                            title: "Descartar correção?",
+                            description:
+                              "As alterações ainda não salvas serão descartadas.",
+                            confirmLabel: "Descartar",
+                            danger: true,
+                          }))
+                        )
+                          return;
+                        setNotes(c.notes);
+                        setVitals(c.vitals);
+                        setOccurredOn(c.occurredOn || "");
+                        setOccurredTime(c.occurredTime || "");
+                        setSaved(
+                          JSON.stringify({
+                            notes: c.notes,
+                            vitals: c.vitals,
+                            occurredOn: c.occurredOn || "",
+                            occurredTime: c.occurredTime || "",
+                          }),
+                        );
+                        setReason("");
+                        setEditing(false);
+                        setError("");
+                      }}
+                    >
+                      Cancelar edição
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1522,10 +1682,7 @@ function Encounter({
           <div className="panel">
             <h2>Procedimentos e documentos</h2>
             <div className="action-grid">
-              <button
-                disabled={c.status === "completed"}
-                onClick={() => onAction("application")}
-              >
+              <button onClick={() => onAction("application")}>
                 <Package size={21} />
                 <strong>Aplicação</strong>
                 <span>Produto e quantidade</span>
@@ -1561,7 +1718,19 @@ function Encounter({
                   <span>
                     {a.productName} · {a.quantityMilli / 1000} {a.unit}
                   </span>
-                  <strong>{money(a.totalCents)}</strong>
+                  <div className="row wrap">
+                    <strong>{money(a.totalCents)}</strong>
+                    {a.status === "voided" ? (
+                      <span className="badge">Cancelada</span>
+                    ) : (
+                      <RecordCorrection
+                        kind="application"
+                        id={a.id}
+                        data={data}
+                        mutate={mutate}
+                      />
+                    )}
+                  </div>
                 </div>
               ))}
             {data.prescriptions
@@ -1569,12 +1738,42 @@ function Encounter({
               .map((p) => (
                 <div className="record-row" key={p.id}>
                   <span>Receita · {p.items.map((i) => i.name).join(", ")}</span>
-                  <PrescriptionSignature
-                    id={p.id}
-                    signedAt={p.signedAt}
-                    prescriberId={p.prescriberId}
-                    identity={data.identity}
-                  />
+                  <div className="stack">
+                    <PrescriptionSignature
+                      active={
+                        p.recordStatus !== "replaced" &&
+                        p.recordStatus !== "voided"
+                      }
+                      id={p.id}
+                      signedAt={p.signedAt}
+                      prescriberId={p.prescriberId}
+                      identity={data.identity}
+                    />
+                    {p.recordStatus === "replaced" ||
+                    p.recordStatus === "voided" ? (
+                      <span className="badge">
+                        {p.recordStatus === "replaced"
+                          ? "Substituída · original preservado"
+                          : "Cancelada"}
+                      </span>
+                    ) : (
+                      isVeterinarian(data.identity) && (
+                        <div className="row wrap">
+                          <button
+                            className="compact-action"
+                            onClick={() => editDocument("prescription", p.id)}
+                          >
+                            Corrigir receita
+                          </button>
+                          <VoidDocument
+                            kind="prescription"
+                            id={p.id}
+                            mutate={mutate}
+                          />
+                        </div>
+                      )
+                    )}
+                  </div>
                 </div>
               ))}
             {data.exams
@@ -1587,9 +1786,29 @@ function Encounter({
               )
               .map((e) => (
                 <div className="record-row" key={e.id}>
-                  <span>
-                    {e.kind === "order" ? "Pedido" : "Resultado"} · {e.name}
-                  </span>
+                  <div>
+                    <span>
+                      {e.kind === "order" ? "Pedido" : "Resultado"} · {e.name}
+                    </span>
+                    {e.recordStatus === "replaced" ||
+                    e.recordStatus === "voided" ? (
+                      <p className="badge">
+                        {e.recordStatus === "replaced"
+                          ? "Substituído · original preservado"
+                          : "Cancelado"}
+                      </p>
+                    ) : (
+                      <div className="row wrap">
+                        <button
+                          className="compact-action"
+                          onClick={() => editDocument("exam", e.id)}
+                        >
+                          Corrigir {e.kind === "order" ? "pedido" : "resultado"}
+                        </button>
+                        <VoidDocument kind="exam" id={e.id} mutate={mutate} />
+                      </div>
+                    )}
+                  </div>
                   {e.kind === "order" && (
                     <a className="button-link" href={`/api/exams/${e.id}/pdf`}>
                       Baixar solicitação PDF
@@ -1602,16 +1821,23 @@ function Encounter({
                     >
                       Baixar PDF
                     </a>
-                  ) : (
+                  ) : e.recordStatus !== "replaced" &&
+                    e.recordStatus !== "voided" ? (
                     <span className="badge">
-                      {data.exams.some((r) => r.requestId === e.id)
+                      {data.exams.some(
+                        (r) =>
+                          r.requestId === e.id &&
+                          r.recordStatus !== "voided" &&
+                          r.recordStatus !== "replaced",
+                      )
                         ? "Resultado recebido"
                         : "Aguardando resultado"}
                     </span>
-                  )}
+                  ) : null}
                 </div>
               ))}
           </div>
+          <EncounterBilling visitId={c.visitId} data={data} mutate={mutate} />
         </section>
         {history && (
           <aside className="panel history-panel">

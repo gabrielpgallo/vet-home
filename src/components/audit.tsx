@@ -244,6 +244,11 @@ function AuditRow({
             <div id={"audit-" + entry.id} className="audit-detail">
               {busy && <p role="status">Carregando detalhes…</p>}
               {error && <p role="alert">{error}</p>}
+              {detail?.reason && (
+                <p>
+                  <strong>Motivo da correção:</strong> {detail.reason}
+                </p>
+              )}
               {detail && (
                 <table>
                   <caption>
