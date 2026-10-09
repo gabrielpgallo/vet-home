@@ -32,17 +32,33 @@ export function buildFinance(data: Bootstrap, input: FinanceRange) {
     (e) => e.status === "active" && e.paidOn && inRange(e.paidOn),
   );
   const receipts = data.payments
-    .filter((p) => inRange(dateKey(p.createdAt)))
-    .map((p) => ({ ...p, date: dateKey(p.createdAt), tutor: tutor(p.visitId) }))
+    .filter(
+      (p) => p.status !== "voided" && inRange(p.paidOn || dateKey(p.createdAt)),
+    )
+    .map((p) => ({
+      ...p,
+      date: p.paidOn || dateKey(p.createdAt),
+      tutor: tutor(p.visitId),
+    }))
     .sort((a, b) => a.date.localeCompare(b.date));
   const visits = data.visits
-    .filter((v) => v.status === "completed" && inRange(dateKey(v.startsAt)))
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+    .filter(
+      (v) =>
+        v.status === "completed" &&
+        inRange(v.performedOn || dateKey(v.startsAt)),
+    )
+    .sort((a, b) =>
+      (a.performedOn || a.startsAt || "").localeCompare(
+        b.performedOn || b.startsAt || "",
+      ),
+    )
     .map((v) => {
-      const applications = data.applications.filter((a) =>
-        data.consultations.some(
-          (c) => c.id === a.consultationId && c.visitId === v.id,
-        ),
+      const applications = data.applications.filter(
+        (a) =>
+          a.status !== "voided" &&
+          data.consultations.some(
+            (c) => c.id === a.consultationId && c.visitId === v.id,
+          ),
       );
       const costCents = applications.reduce(
         (s, a) => s + applicationTotal(a.quantityMilli, a.unitCostCents),
@@ -52,11 +68,16 @@ export function buildFinance(data: Bootstrap, input: FinanceRange) {
         .filter((e) => e.visitId === v.id)
         .reduce((s, e) => s + e.amountCents, 0);
       const paidCents = data.payments
-        .filter((p) => p.visitId === v.id && dateKey(p.createdAt) <= range.end)
+        .filter(
+          (p) =>
+            p.status !== "voided" &&
+            p.visitId === v.id &&
+            (p.paidOn || dateKey(p.createdAt)) <= range.end,
+        )
         .reduce((s, p) => s + p.amountCents, 0);
       return {
         ...v,
-        date: dateKey(v.startsAt),
+        date: v.performedOn || dateKey(v.startsAt),
         tutor: tutor(v.id),
         patients: data.visitPatients
           .filter((vp) => vp.visitId === v.id)
@@ -66,6 +87,7 @@ export function buildFinance(data: Bootstrap, input: FinanceRange) {
         expensesCents,
         paidCents,
         dueCents: Math.max(0, v.totalCents - paidCents),
+        creditCents: Math.max(0, paidCents - v.totalCents),
         resultCents: v.totalCents - costCents - expensesCents,
         applications: applications.map((a) => ({
           ...a,
@@ -126,11 +148,14 @@ export function buildFinance(data: Bootstrap, input: FinanceRange) {
     costsCents: applicationCostsCents + expensesCents,
     paidExpensesCents,
     cashCents: receivedCents - paidExpensesCents,
+    creditCents: visits.reduce((s, v) => s + v.creditCents, 0),
     dueCents: visits.reduce((s, v) => s + v.dueCents, 0),
     resultCents: billedCents - applicationCostsCents - expensesCents,
     periodLabel: `${dateLabel(range.start)} a ${dateLabel(range.end)}`,
     pendingVisits: data.visits.filter(
-      (v) => v.status === "scheduled" && inRange(dateKey(v.startsAt)),
+      (v) =>
+        v.status === "scheduled" &&
+        inRange(v.performedOn || dateKey(v.startsAt)),
     ).length,
   };
 }
@@ -147,6 +172,7 @@ export function financeCsv(report: FinanceReport, companyName: string) {
     ["Faturado", report.billedCents],
     ["Recebido no período", report.receivedCents],
     ["A receber das visitas do período (até a data final)", report.dueCents],
+    ["Saldo recebido a maior (conferir devolução)", report.creditCents],
     ["Custos das aplicações", report.applicationCostsCents],
     ["Despesas de competência", report.expensesCents],
     ["Resultado estimado", report.resultCents],
@@ -167,6 +193,7 @@ export function financeCsv(report: FinanceReport, companyName: string) {
       "Resultado da visita (R$)",
       "Recebido até o fim do período (R$)",
       "A receber (R$)",
+      "Recebido a maior (R$)",
       "Visita ID",
     ],
   );
@@ -181,6 +208,7 @@ export function financeCsv(report: FinanceReport, companyName: string) {
       num(v.resultCents),
       num(v.paidCents),
       num(v.dueCents),
+      num(v.creditCents),
       v.id,
     ]);
   rows.push(

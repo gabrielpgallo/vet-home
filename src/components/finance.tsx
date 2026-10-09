@@ -36,7 +36,7 @@ export function Finance({
   const visitLabel = (id: string | null) => {
     const v = data.visits.find((v) => v.id === id);
     return v
-      ? `${dateLabel(v.startsAt)} · ${data.tutors.find((t) => t.id === v.tutorId)?.name}`
+      ? `${dateLabel(v.performedOn || v.startsAt)} · ${data.tutors.find((t) => t.id === v.tutorId)?.name}`
       : "";
   };
   return (
@@ -140,6 +140,13 @@ export function Finance({
               detail="Faturado menos custos e despesas"
             />
           </div>
+          {report.creditCents > 0 && (
+            <p className="notice">
+              Recebido a maior nas visitas do período:{" "}
+              {money(report.creditCents)}. Confira os recebimentos e eventuais
+              devoluções.
+            </p>
+          )}
           <div className="finance-overview">
             <section className="panel">
               <div className="section-heading">
@@ -225,7 +232,8 @@ export function Finance({
                           <ArrowUpRight size={14} />
                         </button>
                         <small className="table-detail">
-                          {dateLabel(v.startsAt)} · {v.patients}
+                          {dateLabel(v.performedOn || v.startsAt)} ·{" "}
+                          {v.patients}
                         </small>
                       </td>
                       <td>{money(v.totalCents)}</td>
@@ -235,7 +243,14 @@ export function Finance({
                         {money(v.resultCents)}
                       </td>
                       <td>{money(v.paidCents)}</td>
-                      <td>{money(v.dueCents)}</td>
+                      <td>
+                        {money(v.dueCents)}
+                        {v.creditCents > 0 && (
+                          <small className="table-detail">
+                            {money(v.creditCents)} recebido a maior
+                          </small>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -637,10 +652,14 @@ function ExpenseDialog({
             >
               <option value="">Despesa geral</option>
               {[...data.visits]
-                .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
+                .sort((a, b) =>
+                  (b.performedOn || b.startsAt || "").localeCompare(
+                    a.performedOn || a.startsAt || "",
+                  ),
+                )
                 .map((v) => (
                   <option key={v.id} value={v.id}>
-                    {dateLabel(v.startsAt)} ·{" "}
+                    {dateLabel(v.performedOn || v.startsAt)} ·{" "}
                     {data.tutors.find((t) => t.id === v.tutorId)?.name}
                     {v.status === "cancelled" ? " · cancelada" : ""}
                   </option>

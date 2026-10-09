@@ -105,6 +105,7 @@ export function financePdf(
         "A receber das visitas do período, na data final",
         money(report.dueCents),
       ],
+      ["Recebido a maior (conferir devolução)", money(report.creditCents)],
       ["Custo das aplicações", money(report.applicationCostsCents)],
       ["Despesas de competência", money(report.expensesCents)],
       ["Resultado estimado", money(report.resultCents)],
@@ -135,7 +136,7 @@ export function financePdf(
       money(v.costCents),
       money(v.expensesCents),
       money(v.resultCents),
-      money(v.dueCents),
+      v.creditCents > 0 ? `${money(v.creditCents)} a maior` : money(v.dueCents),
     ]),
   );
   heading("Recebimentos no período");
